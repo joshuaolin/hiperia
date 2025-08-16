@@ -3,8 +3,7 @@ import "./index.css";
 
 const Header = () => (
   <header role="banner" className="header">
-    <h1>Provably Fair Fun.</h1>
-    <h2>Fast, decentralized gameplay on Solana with outcomes you can verify.</h2>
+    <h2>Provably Fair Fun.</h2>
   </header>
 );
 
