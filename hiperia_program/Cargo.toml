@@ -1,8 +1,7 @@
 [workspace]
 members = [
-    "programs/*"
+    "programs/hiperia_program",
 ]
-resolver = "2"
 
 [profile.release]
 overflow-checks = true

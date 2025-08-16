@@ -1,12 +1,9 @@
 [toolchain]
-package_manager = "yarn"
-
-[features]
-resolution = true
-skip-lint = false
+anchor_version = "0.30.1"
+solana_version = "1.18.25"
 
 [programs.localnet]
-hiperia_program = "Et9BKNFfKJKC9BFynCGvp25aBCu38ZNBvDzNadpBW4DC"
+hiperia_program = "B71ikRSMNVSAoxsYPZarMnghd5zztXzUxomTtRMvsGAz"
 
 [registry]
 url = "https://api.apr.dev"
@@ -16,4 +13,4 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "yarn run mocha -t 1000000 tests/"
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
