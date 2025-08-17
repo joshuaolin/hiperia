@@ -56,8 +56,8 @@ function App() {
       {/* Foreground UI */}
       <Header />
 
-      {/* Replace with your custom Mainnet RPC */}
-      <ConnectionProvider endpoint="https://your-custom-rpc.quicknode.com">
+      {/* Use a custom RPC endpoint or Devnet for testing */}
+      <ConnectionProvider endpoint="https://api.devnet.solana.com">
         <WalletProvider wallets={wallets} autoConnect>
           <WalletModalProvider>
             <WalletConnect />

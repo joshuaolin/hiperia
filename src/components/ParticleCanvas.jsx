@@ -32,8 +32,11 @@ export default function ParticleCanvas() {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
 
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resize();
 
     function createParticles(e) {
       const maxParticles = window.innerWidth <= 640 ? 10 : 20;
@@ -60,13 +63,15 @@ export default function ParticleCanvas() {
     }
 
     document.body.addEventListener("mousemove", createParticles);
+    window.addEventListener("resize", resize);
     animate();
-
-    window.addEventListener("resize", () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    });
   }, []);
 
-  return <canvas ref={canvasRef} id="particle-canvas"></canvas>;
+  return (
+    <canvas
+      ref={canvasRef}
+      id="particle-canvas"
+      className="fixed top-0 left-0 w-full h-full -z-40"
+    ></canvas>
+  );
 }
