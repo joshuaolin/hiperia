@@ -17,7 +17,7 @@ const wallets = [new PhantomWalletAdapter(), new SolflareWalletAdapter()];
 
 const Header = () => (
   <header role="banner" className="header">
-    <h1>Provably Fair Fun.</h1>
+    <h1>Provably Fair Fun</h1>
     <div className="wallet-btn">
       <WalletMultiButton
         className="wallet-adapter-button"
