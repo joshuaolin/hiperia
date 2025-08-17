@@ -1,10 +1,15 @@
 import React from "react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 
 export default function Header() {
   return (
-    <div>
-      <h1>Provably Fair Fun.</h1>
-      <h2>Fast, decentralized gameplay on Solana with outcomes you can verify.</h2>
-    </div>
+    <header role="banner" className="header">
+      <div className="wallet-btn">
+        <WalletMultiButton
+          className="wallet-adapter-button"
+          aria-label="Connect or Disconnect Wallet"
+        />
+      </div>
+    </header>
   );
 }

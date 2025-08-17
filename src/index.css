@@ -54,12 +54,34 @@ header h1 {
   color: var(--text-color);
 }
 
-main {
-  flex: 1;
+.header-container {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 2rem;
+  flex: 1;
+}
+
+.header-content {
+  text-align: center;
+  padding: 1rem;
+}
+
+.header-description {
+  color: var(--text-color);
+  font-family: "Courier New", Courier, monospace;
+  font-size: 1rem;
+  max-width: 600px;
+  margin: 1rem auto;
+  text-align: center;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  overflow: auto;
 }
 
 .ticker {
@@ -119,10 +141,12 @@ a {
   color: var(--text-color);
   text-decoration: none;
 }
+
 a:hover {
   color: var(--hover-accent);
   text-decoration: underline;
 }
+
 a:visited {
   color: var(--text-color);
 }
@@ -138,35 +162,25 @@ body, #root, .app {
   position: relative;
 }
 
-.main {
-  flex: 1; /* pushes footer down */
+.wallet-btn {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 2rem;
+  margin-top: 1rem;
 }
 
-.footer {
-  margin-top: auto; /* ensures it stays at bottom */
-  background-color: rgba(0, 0, 0, 0.8);
-  padding: 1rem;
-  border-top: 2px solid #00cc00;
-  text-align: center;
-}
-
-/* Override WalletMultiButton styles */
-.wallet-adapter-button {
+.wallet-btn .wallet-adapter-button {
   background-color: rgba(0, 0, 0, 0.8) !important;
   color: var(--text-color) !important;
   border: 2px solid var(--accent-color) !important;
-  font-family: 'Courier New', Courier, monospace !important;
+  font-family: "Courier New", Courier, monospace !important;
   padding: 0.5rem 1.2rem !important;
   border-radius: 8px !important;
   cursor: pointer !important;
   transition: all 0.3s ease !important;
 }
 
-.wallet-adapter-button:hover {
+.wallet-btn .wallet-adapter-button:hover {
   background-color: var(--accent-color) !important;
   color: #000 !important;
   text-shadow: 0 0 6px var(--hover-accent) !important;
