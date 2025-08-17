@@ -17,17 +17,14 @@ const wallets = [new PhantomWalletAdapter(), new SolflareWalletAdapter()];
 
 const Header = () => (
   <header role="banner" className="header">
-    <h2>Provably Fair Fun.</h2>
+    <h1>Provably Fair Fun.</h1>
+    <div className="wallet-btn">
+      <WalletMultiButton
+        className="wallet-adapter-button"
+        aria-label="Connect or Disconnect Wallet"
+      />
+    </div>
   </header>
-);
-
-const WalletConnect = () => (
-  <div className="wallet-btn flex flex-col items-center gap-4 mt-8">
-    <WalletMultiButton
-      className="bg-green-500 hover:bg-green-600 text-black px-8 py-3 rounded-xl text-xl font-bold shadow-xl transition-all duration-300 transform hover:scale-105"
-      aria-label="Connect or Disconnect Wallet"
-    />
-  </div>
 );
 
 const Ticker = () => (
@@ -40,16 +37,18 @@ const Ticker = () => (
 
 const Footer = () => (
   <footer role="contentinfo" className="footer">
-    Powered by: HiperiaFoundation, and{" "}
-    <a href="https://switchboard.xyz" target="_blank" rel="noopener noreferrer">
-      Switchboard VRF
-    </a>
+    <p>
+      Powered by: HiperiaFoundation, and{" "}
+      <a href="https://switchboard.xyz" target="_blank" rel="noopener noreferrer">
+        Switchboard VRF
+      </a>
+    </p>
   </footer>
 );
 
 function App() {
   return (
-    <div className="app relative w-full h-screen overflow-hidden bg-black text-green-400">
+    <div className="app">
       {/* Background effects */}
       <MatrixBackground />
       <ParticleCanvas />
@@ -65,7 +64,7 @@ function App() {
       <ConnectionProvider endpoint="https://your-custom-rpc.quicknode.com">
         <WalletProvider wallets={wallets} autoConnect>
           <WalletModalProvider>
-            <WalletConnect />
+            {/* Wallet button is now in Header */}
           </WalletModalProvider>
         </WalletProvider>
       </ConnectionProvider>
