@@ -9,7 +9,6 @@ import { PhantomWalletAdapter, SolflareWalletAdapter } from "@solana/wallet-adap
 
 import MatrixBackground from "./components/MatrixBackground";
 import ParticleCanvas from "./components/ParticleCanvas";
-import WalletBalance from "./components/WalletBalance";
 import "./index.css";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
@@ -23,9 +22,11 @@ const Header = () => (
 );
 
 const WalletConnect = () => (
-  <div className="wallet-btn flex flex-col items-center gap-2">
-    <WalletMultiButton className="bg-green-500 hover:bg-green-400 text-black px-5 py-2 rounded-xl text-lg font-semibold shadow-lg" />
-    <WalletBalance />
+  <div className="wallet-btn flex flex-col items-center gap-4 mt-8">
+    <WalletMultiButton
+      className="bg-green-500 hover:bg-green-600 text-black px-8 py-3 rounded-xl text-xl font-bold shadow-xl transition-all duration-300 transform hover:scale-105"
+      aria-label="Connect or Disconnect Wallet"
+    />
   </div>
 );
 
@@ -56,7 +57,11 @@ function App() {
       {/* Foreground UI */}
       <Header />
 
-      {/* Replace with your custom Mainnet RPC */}
+      {/* 
+        CRITICAL: Replace with a valid Mainnet RPC from QuickNode, Alchemy, or Helius.
+        Example: https://your-custom-rpc.quicknode.com or https://solana-mainnet.g.alchemy.com/v2/your-api-key
+        Sign up at https://www.quicknode.com/, https://www.alchemy.com/, or https://www.helius.dev/
+      */}
       <ConnectionProvider endpoint="https://your-custom-rpc.quicknode.com">
         <WalletProvider wallets={wallets} autoConnect>
           <WalletModalProvider>
