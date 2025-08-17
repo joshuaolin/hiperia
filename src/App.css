@@ -1,9 +1,77 @@
-.hiperia-ticker-text {
-  font-size: 10rem;
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 10px;
 }
 
-@media (max-width: 640px) {
-  .hiperia-ticker-text {
-    font-size: 3rem;
-  }
+::-webkit-scrollbar-track {
+  background: var(--bg-color);
+  border-left: 1px solid var(--accent-color);
 }
+
+::-webkit-scrollbar-thumb {
+  background: var(--accent-color);
+  border-radius: 5px;
+  border: 2px solid var(--bg-color);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--hover-accent);
+}
+
+/* Game Description Scroll */
+.game-description {
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 14px;
+  white-space: pre-wrap;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-color) var(--bg-color);
+  padding-right: 5px; /* Add space for scrollbar */
+}
+
+/* Left-aligned content */
+.carousel-container {
+  position: relative;
+  width: 100%;
+  max-width: 600px;
+  margin: auto;
+  text-align: left;
+}
+
+.game-card {
+  background: var(--section-bg);
+  padding: 2rem;
+  border: 2px solid var(--accent-color);
+  border-radius: 12px;
+  box-shadow: 0 0 12px rgba(0, 204, 0, 0.5);
+  text-align: center;
+}
+
+.description-section {
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+
+.section-title {
+  color: var(--hover-accent);
+  font-size: 1.2rem;
+  margin-bottom: 0.5rem;
+  font-family: 'Courier New', Courier, monospace;
+  text-align: left;
+  padding-left: 0;
+}
+
+.bullet-list {
+  padding-left: 1.5rem;
+  margin: 0;
+  text-align: left;
+}
+
+.bullet-list li {
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+  list-style-position: outside;
+  text-align: left;
+}
+
+/* Rest of your existing CSS remains the same */
