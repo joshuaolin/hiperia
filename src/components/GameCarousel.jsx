@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
+import { useSwipeable } from "react-swipeable";
 import "../index.css";
 
 const games = [
@@ -16,7 +17,6 @@ const games = [
           "Draws occur daily at 2:00 PM Asia time (UTC+8)",
           "Check results after daily draw",
           "Winnings automatically credited instantly"
-          //"Winning numbers generated using provably fair RNG on Solana blockchain"
         ]
       },
       {
@@ -24,8 +24,6 @@ const games = [
         items: [
           "Exact Order: Match both digits in exact order to win 1.2 SOL",
           "Any Order: Match both digits in any order to win 0.6 SOL",
-          //"Probability of exact-order win: 1 in 930 (31 × 30)",
-          //"Probability of any-order win: 1 in 465",
           "Prizes automatically credited to player's wallet instantly"
         ]
       },
@@ -52,8 +50,15 @@ export default function GameCarousel() {
   const prevGame = () =>
     setCurrent((prev) => (prev - 1 + games.length) % games.length);
 
+  const swipeHandlers = useSwipeable({
+    onSwipedLeft: () => nextGame(),
+    onSwipedRight: () => prevGame(),
+    preventDefaultTouchmoveEvent: true,
+    trackMouse: true
+  });
+
   return (
-    <div className="carousel-container">
+    <div className="carousel-container" {...swipeHandlers}>
       <motion.div
         key={games[current].id}
         initial={{ opacity: 0, x: 100 }}
@@ -82,12 +87,30 @@ export default function GameCarousel() {
         )}
       </motion.div>
 
-      <button className="carousel-btn prev-btn" onClick={prevGame}>
+      <button 
+        className="carousel-btn prev-btn" 
+        onClick={prevGame}
+        aria-label="Previous game"
+      >
         ⬅
       </button>
-      <button className="carousel-btn next-btn" onClick={nextGame}>
+      <button 
+        className="carousel-btn next-btn" 
+        onClick={nextGame}
+        aria-label="Next game"
+      >
         ➡
       </button>
+
+      <div className="mobile-indicators">
+        {games.map((game, index) => (
+          <span 
+            key={game.id}
+            className={`indicator-dot ${index === current ? 'active' : ''}`}
+            onClick={() => setCurrent(index)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
