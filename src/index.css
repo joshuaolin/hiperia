@@ -25,6 +25,12 @@ body {
   min-height: 100vh;
 }
 
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
 #matrix-bg,
 #particle-canvas {
   position: fixed;
@@ -46,12 +52,6 @@ header {
   padding: 1rem;
   border-bottom: 2px solid var(--accent-color);
   text-align: center;
-}
-
-header h1 {
-  font-size: 2rem;
-  font-weight: bold;
-  color: var(--text-color);
 }
 
 .header-container {
@@ -128,9 +128,6 @@ footer p {
 }
 
 @media (max-width: 640px) {
-  header h1 {
-    font-size: 1.5rem;
-  }
   .ticker-text {
     font-size: 1.5rem;
     animation: scroll 15s linear infinite;
@@ -149,17 +146,6 @@ a:hover {
 
 a:visited {
   color: var(--text-color);
-}
-
-body, #root, .app {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  font-family: 'Courier New', Courier, monospace;
-  background: linear-gradient(180deg, #000000 0%, rgba(0, 204, 0, 0.1) 100%);
-  color: #00cc00;
-  position: relative;
 }
 
 .wallet-btn {
