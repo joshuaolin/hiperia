@@ -173,9 +173,7 @@ export default function Dodos({ onBack }) {
         </div>
 
         <div className="game-area">
-          <h2 className="game-title">DODOS [12.12.25]</h2>
-
-          <div className="game-sections">
+                    <div className="game-sections">
             <div className="game-section number-selection-section">
               <h3>SELECT YOUR NUMBERS</h3>
               <div className="number-grid">

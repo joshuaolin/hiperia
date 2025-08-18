@@ -189,10 +189,11 @@ footer p {
 ========================= */
 .carousel-container {
   position: relative;
-  max-width: 90vw;
+  max-width: 95vw;
   width: 100%;
   margin: 0.5rem auto;
   text-align: center;
+  box-sizing: border-box;
 }
 
 .game-card {
@@ -204,6 +205,7 @@ footer p {
   max-width: 600px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   text-align: left;
+  box-sizing: border-box;
 }
 
 .game-title {
@@ -248,9 +250,9 @@ footer p {
   background: rgba(0, 0, 0, 0.8);
   color: var(--text-color);
   border: 2px solid var(--accent-color);
-  font-size: clamp(1rem, 2.5vw, 1.2rem);
-  width: 40px;
-  height: 40px;
+  font-size: clamp(0.8rem, 2vw, 1rem);
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -266,12 +268,16 @@ footer p {
   color: #000;
 }
 
+.carousel-btn:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
 .prev-btn {
-  left: -50px;
+  left: -40px;
 }
 
 .next-btn {
-  right: -50px;
+  right: -40px;
 }
 
 .mobile-indicators {
@@ -302,11 +308,12 @@ footer p {
   border: 2px solid var(--accent-color);
   border-radius: 1rem;
   margin: 0.5rem auto;
-  max-width: 90vw;
+  max-width: 95vw;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   text-align: left;
   position: relative;
   z-index: 60;
+  box-sizing: border-box;
 }
 
 .donation-form {
@@ -462,12 +469,6 @@ a:visited {
   to { transform: translateX(-100%); }
 }
 
-@keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(0, 204, 0, 0.7); }
-  70% { box-shadow: 0 0 0 10px rgba(0, 204, 0, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(0, 204, 0, 0); }
-}
-
 /* =========================
    RESPONSIVE
 ========================= */
@@ -508,17 +509,17 @@ a:visited {
   }
 
   .carousel-btn {
-    width: 30px;
-    height: 30px;
-    font-size: clamp(0.8rem, 2vw, 1rem);
+    width: 28px;
+    height: 28px;
+    font-size: clamp(0.7rem, 1.5vw, 0.9rem);
   }
 
   .prev-btn {
-    left: -40px;
+    left: -36px;
   }
 
   .next-btn {
-    right: -40px;
+    right: -36px;
   }
 
   .donation-section h2 {

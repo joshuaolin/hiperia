@@ -6,7 +6,7 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  max-width: min(90vw, 360px); /* Reduced for mobile */
+  max-width: min(95vw, 360px); /* Compact for mobile */
   margin: 0 auto;
   padding: 0.25rem;
   position: relative;
@@ -303,7 +303,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .number-btn, .matrix-button, .check-results-btn, .top-donator, .recent-donator {
+  .number-btn, .matrix-button, .check-results-btn, .top-donator, .recent-donator, .carousel-btn {
     transition: none;
     animation: none;
   }
