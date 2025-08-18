@@ -1,12 +1,13 @@
 import React from "react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import "../index.css";
 
 export default function Header() {
   return (
     <header role="banner" className="header">
       <div className="wallet-btn">
         <WalletMultiButton
-          className="wallet-adapter-button"
+          className="wallet-adapter-button matrix-button"
           aria-label="Connect or Disconnect Wallet"
         />
       </div>

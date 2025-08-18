@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   ConnectionProvider,
   WalletProvider,
@@ -16,6 +16,7 @@ import MatrixBackground from "./components/MatrixBackground";
 import ParticleCanvas from "./components/ParticleCanvas";
 import Header from "./components/Header";
 import GameCarousel from "./components/GameCarousel";
+import Dodos from "./games/Dodos";
 import Footer from "./components/Footer";
 import "./index.css";
 import "./App.css";
@@ -38,7 +39,7 @@ function LandingPage() {
         </p>
         <div className="wallet-btn">
           <WalletMultiButton
-            className="start-game-button wallet-adapter-button"
+            className="start-game-button wallet-adapter-button matrix-button"
             aria-label="Connect Wallet to Start Game"
           >
             START GAME
@@ -50,11 +51,31 @@ function LandingPage() {
 }
 
 // ------------------
-// Middle Section Switcher
+// Content Wrapper
 // ------------------
 function ContentWrapper() {
   const { connected } = useWallet();
-  return <>{!connected ? <LandingPage /> : <GameCarousel />}</>;
+  const [currentView, setCurrentView] = useState(null);
+
+  const handleEnterGame = (gameName) => {
+    setCurrentView(gameName);
+  };
+
+  const handleBack = () => {
+    setCurrentView(null);
+  };
+
+  return (
+    <>
+      {!connected ? (
+        <LandingPage />
+      ) : currentView === "Dodos" ? (
+        <Dodos onBack={handleBack} />
+      ) : (
+        <GameCarousel onEnterGame={handleEnterGame} />
+      )}
+    </>
+  );
 }
 
 // ------------------
@@ -67,7 +88,6 @@ function App() {
     <div className="app">
       <MatrixBackground />
       <ParticleCanvas />
-
       <ConnectionProvider endpoint="https://your-custom-rpc.quicknode.com">
         <WalletProvider wallets={wallets} autoConnect>
           <WalletModalProvider>

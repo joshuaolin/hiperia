@@ -6,15 +6,15 @@ import "../index.css";
 const games = [
   {
     id: 1,
-    name: "DODOS [SOON - 12.12.25]",
+    name: "DODOS [12.12.25]",
     description: [
       {
         title: "How to Play",
         items: [
-          "Connect Solana-compatible wallet to platform",
           "Players select 2 unique digits from 1 to 31 (no duplicates allowed)",
           "Each ticket costs 0.005 SOL, payable via Solana-compatible wallet",
-          "Draws occur daily at 2:00 PM Asia time (UTC+8)",
+          "Draws occur daily at 2:00, 3:00, and 4:00 PM Asia time (UTC+8)",
+          "Offering three chances to win per ticket",
           "Check results after daily draw",
           "Winnings automatically credited instantly"
         ]
@@ -22,33 +22,52 @@ const games = [
       {
         title: "Prizes",
         items: [
-          "Exact Order: Match both digits in exact order to win 1.2 SOL",
-          "Any Order: Match both digits in any order to win 0.6 SOL",
+          "Match both digits in exact order to win 1.2 SOL",
+          "Match both digits in any order to win 0.01 SOL",
           "Prizes automatically credited to player's wallet instantly"
         ]
       },
       {
         title: "Airdrop Eligibility",
         items: [
-          "Chance to win up to 2 SOL plus 50% of weekly donations",
-          "More tickets purchased = higher airdrop win chances"
+          "TBA",
+          //"Chance to win up to 2 SOL plus 50% of weekly donations",
+          //"More tickets purchased = higher airdrop win chances"
         ]
       }
     ]
   },
-  { 
-    id: 2, 
-    name: "9 LITTLE INDIANS [TBA]", 
-    description: "" 
+  {
+    id: 2,
+    name: "9 LITTLE LEMONS [TBA]",
+    // description: [
+    //   {
+    //     title: "How to Play",
+    //     items: [
+    //       "TBA"
+    //     ]
+    //   },
+    //   {
+    //     title: "Prizes",
+    //     items: [
+    //       "TBA"
+    //     ]
+    //   },
+    //   {
+    //     title: "Airdrop Eligibility",
+    //     items: [
+    //       "TBA"
+    //     ]
+    //   }
+    // ]
   },
 ];
 
-export default function GameCarousel() {
+export default function GameCarousel({ onEnterGame }) {
   const [current, setCurrent] = useState(0);
 
   const nextGame = () => setCurrent((prev) => (prev + 1) % games.length);
-  const prevGame = () =>
-    setCurrent((prev) => (prev - 1 + games.length) % games.length);
+  const prevGame = () => setCurrent((prev) => (prev - 1 + games.length) % games.length);
 
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => nextGame(),
@@ -68,7 +87,6 @@ export default function GameCarousel() {
         className="game-card"
       >
         <h2 className="game-title">{games[current].name}</h2>
-        
         {Array.isArray(games[current].description) ? (
           <div className="game-description">
             {games[current].description.map((section, sectionIndex) => (
@@ -85,17 +103,29 @@ export default function GameCarousel() {
         ) : (
           <p className="game-description">{games[current].description}</p>
         )}
+        {games[current].name.includes("DODOS") && (
+          <div className="wallet-btn">
+            <button
+              className="wallet-adapter-button matrix-button"
+              onClick={() => onEnterGame("Dodos")}
+              aria-label="Enter DODOS Game"
+            >
+              ENTER GAME
+            </button>
+          </div>
+        )}
       </motion.div>
 
+      {/* Navigation buttons */}
       <button 
-        className="carousel-btn prev-btn" 
+        className="carousel-btn prev-btn matrix-button" 
         onClick={prevGame}
         aria-label="Previous game"
       >
         ⬅
       </button>
       <button 
-        className="carousel-btn next-btn" 
+        className="carousel-btn next-btn matrix-button" 
         onClick={nextGame}
         aria-label="Next game"
       >

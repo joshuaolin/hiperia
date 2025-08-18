@@ -1,5 +1,5 @@
 [toolchain]
-anchor_version = "0.30.1"
+anchor_version = "0.31.1"
 solana_version = "1.18.25"
 
 [programs.localnet]
@@ -9,7 +9,7 @@ hiperia_program = "B71ikRSMNVSAoxsYPZarMnghd5zztXzUxomTtRMvsGAz"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

@@ -1,416 +1,292 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::program::invoke_signed;
-use solana_system_interface::transfer;
-use anchor_lang::solana_program::sysvar::rent::Rent;
+use anchor_lang::system_program::{transfer, Transfer};
+use hiperia_lottery_rng::generate_random_digits;
 
-mod utils;
-mod constants;
-use crate::utils::*;
-use crate::constants::*;
-
-declare_id!("B71ikRSMNVSAoxsYPZarMnghd5zztXzUxomTtRMvsGAz"); // Replace with actual program ID
+declare_id!("Hiperia11111111111111111111111111111111111");
 
 #[program]
-pub mod projecthiperia {
+pub mod hiperia_lottery {
     use super::*;
 
-    // Initialize the program state
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        let purchase_tracker = &mut ctx.accounts.purchase_tracker;
-        let draw_state = &mut ctx.accounts.draw_state;
-        let rent = Rent::get()?;
-        
-        purchase_tracker.tickets = vec![];
-        purchase_tracker.ticket_count = 0;
+        let lottery_state = &mut ctx.accounts.lottery_state;
+        lottery_state.authority = ctx.accounts.authority.key();
+        lottery_state.ticket_price = 5_000_000; // 0.005 SOL in lamports
+        lottery_state.draw_timestamp = 0; // Set by first draw
+        lottery_state.prize_pool = 0;
+        lottery_state.donation_sum = 0;
+        lottery_state.ticket_count = 0;
+        Ok(())
+    }
 
-        draw_state.draw_time = 0;
-        draw_state.airdrop_winner = Pubkey::default();
-        draw_state.authority = ctx.accounts.authority.key();
-        draw_state.oracle = Pubkey::default();
-        draw_state.purchase_tracker_bump = ctx.bumps.purchase_tracker;
-        draw_state.draw_state_bump = ctx.bumps.draw_state;
-        draw_state.draw_executed = false;
-        draw_state.nonce = 0;
-        draw_state.winning_numbers = [0, 0];
-        draw_state.airdrop_fund = 0;
-        
-        // Calculate rent-exempt minimum dynamically
-        let purchase_tracker_space = 8 + 32768;
-        draw_state.treasury_seed = rent.minimum_balance(purchase_tracker_space);
+    pub fn buy_ticket(ctx: Context<BuyTicket>, digit1: u8, digit2: u8) -> Result<()> {
+        require!(digit1 >= 1 && digit1 <= 31, LotteryError::InvalidDigit);
+        require!(digit2 >= 1 && digit2 <= 31, LotteryError::InvalidDigit);
+        require!(digit1 != digit2, LotteryError::DuplicateDigits);
+        require!(ctx.accounts.payer.lamports() >= ctx.accounts.lottery_state.ticket_price, LotteryError::InsufficientFunds);
+
+        let ticket = &mut ctx.accounts.ticket;
+        ticket.player = ctx.accounts.payer.key();
+        ticket.digit1 = digit1;
+        ticket.digit2 = digit2;
+        ticket.timestamp = Clock::get()?.unix_timestamp;
+
+        let lottery_state = &mut ctx.accounts.lottery_state;
+        lottery_state.ticket_count += 1;
+        lottery_state.prize_pool += ctx.accounts.lottery_state.ticket_price;
+
+        // Update leaderboard
+        let leaderboard = &mut ctx.accounts.leaderboard;
+        leaderboard.player = ctx.accounts.payer.key();
+        leaderboard.tickets += 1;
+
+        // Transfer ticket price to lottery state account
+        transfer(CpiContext::new(
+            ctx.accounts.system_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.payer.to_account_info(),
+                to: ctx.accounts.lottery_state.to_account_info(),
+            },
+        ), ctx.accounts.lottery_state.ticket_price)?;
 
         Ok(())
     }
 
-    // Buy a ticket
-    pub fn buy_ticket(ctx: Context<BuyTicket>, number1: u8, number2: u8) -> Result<()> {
-        require!(number1 >= 1 && number1 <= 31, ErrorCode::InvalidNumber);
-        require!(number2 >= 1 && number2 <= 31, ErrorCode::InvalidNumber);
-        require!(number1 != number2, ErrorCode::DuplicateNumber);
+    pub fn donate(ctx: Context<Donate>, amount: u64) -> Result<()> {
+        require!(amount > 0, LotteryError::InvalidAmount);
+        require!(ctx.accounts.payer.lamports() >= amount, LotteryError::InsufficientFunds);
 
-        let draw_state = &ctx.accounts.draw_state;
-        let purchase_tracker = &mut ctx.accounts.purchase_tracker;
+        let donation = &mut ctx.accounts.donation;
+        donation.donator = ctx.accounts.payer.key();
+        donation.amount = amount;
+        donation.timestamp = Clock::get()?.unix_timestamp;
+
+        let lottery_state = &mut ctx.accounts.lottery_state;
+        lottery_state.donation_sum += amount;
+        lottery_state.prize_pool += amount;
+
+        // Transfer donation to lottery state account
+        transfer(CpiContext::new(
+            ctx.accounts.system_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.payer.to_account_info(),
+                to: ctx.accounts.lottery_state.to_account_info(),
+            },
+        ), amount)?;
+
+        Ok(())
+    }
+
+    pub fn request_vrf(ctx: Context<RequestVrf>) -> Result<()> {
         let clock = Clock::get()?;
+        let current_time = clock.unix_timestamp;
+        let next_draw = get_next_draw_time(current_time);
+        require!(current_time >= next_draw, LotteryError::DrawNotDue);
 
-        require!(
-            draw_state.draw_time == 0 || clock.unix_timestamp < draw_state.draw_time,
-            ErrorCode::TicketSalesClosed
-        );
+        let lottery_state = &mut ctx.accounts.lottery_state;
+        require!(lottery_state.ticket_count > 0, LotteryError::NoTickets);
+        lottery_state.draw_timestamp = next_draw;
 
-        let user_tickets: usize = purchase_tracker
-            .tickets
-            .iter()
-            .filter(|t| t.owner == ctx.accounts.user.key())
-            .count();
-        require!(user_tickets < MAX_TICKETS_PER_USER as usize, ErrorCode::MaxTicketsPerUserReached);
-        require!(purchase_tracker.ticket_count < MAX_TOTAL_TICKETS, ErrorCode::MaxSupplyReached);
+        Ok(())
+    }
 
-        invoke_signed(
-            &transfer(
-                &ctx.accounts.user.key(),
-                &ctx.accounts.purchase_tracker.key(),
-                TICKET_PRICE,
-            ),
-            &[
-                ctx.accounts.user.to_account_info(),
-                ctx.accounts.purchase_tracker.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-            &[],
+    pub fn fulfill_vrf(ctx: Context<FulfillVrf>) -> Result<()> {
+        let lottery_state = &mut ctx.accounts.lottery_state;
+        require!(lottery_state.ticket_count > 0, LotteryError::NoTickets);
+
+        // Generate random digits and airdrop winner using RNG module
+        let clock = Clock::get()?;
+        let rng_result = generate_random_digits(
+            &lottery_state.to_account_info().key(),
+            &clock,
+            ctx.remaining_accounts.len() as u64,
         )?;
 
-        let ticket = Ticket {
-            owner: ctx.accounts.user.key(),
-            numbers: [number1, number2],
-            timestamp: clock.unix_timestamp,
-        };
-        purchase_tracker.tickets.push(ticket);
-        purchase_tracker.ticket_count = purchase_tracker.ticket_count.checked_add(1).ok_or(ErrorCode::MathOverflow)?;
+        let winning_digits = rng_result.digits;
+        let airdrop_winner = rng_result.airdrop_winner.unwrap_or(ctx.remaining_accounts[0].key());
 
-        Ok(())
-    }
-
-    // Request VRF for draw
-    pub fn request_vrf(ctx: Context<RequestVrf>) -> Result<()> {
-        let draw_state = &mut ctx.accounts.draw_state;
-        let purchase_tracker = &ctx.accounts.purchase_tracker;
-        let authority = &ctx.accounts.authority;
-
-        require!(authority.key() == draw_state.authority, ErrorCode::Unauthorized);
-        require!(purchase_tracker.ticket_count >= DRAW_TICKET_THRESHOLD, ErrorCode::InsufficientTickets);
-
-        let clock = Clock::get()?;
-        draw_state.draw_time = get_next_draw_time(clock.unix_timestamp);
-        draw_state.draw_executed = false;
-        draw_state.nonce = draw_state.nonce.checked_add(1).ok_or(ErrorCode::MathOverflow)?;
-
-        emit!(VrfRequested { draw_time: draw_state.draw_time });
-        Ok(())
-    }
-
-    // Fulfill VRF with random numbers and auto-send prizes
-    pub fn fulfill_vrf(
-        ctx: Context<FulfillVrf>,
-        random_numbers: [u8; 2],
-        aux_random: u64,
-        nonce: u64,
-    ) -> Result<()> {
-        let draw_state = &mut ctx.accounts.draw_state;
-        let purchase_tracker = &mut ctx.accounts.purchase_tracker;
-        let oracle = &ctx.accounts.oracle;
-
-        require!(oracle.key() == draw_state.oracle && oracle.is_signer, ErrorCode::Unauthorized);
-        require!(draw_state.draw_time > 0, ErrorCode::DrawNotReady);
-        require!(nonce == draw_state.nonce, ErrorCode::InvalidNonce);
-        require!(purchase_tracker.ticket_count > 0, ErrorCode::NoTicketsForAirdrop);
-        
-        require!(random_numbers[0] != random_numbers[1], ErrorCode::DuplicateNumber);
-
-        let clock = Clock::get()?;
-        require!(clock.unix_timestamp >= draw_state.draw_time, ErrorCode::DrawNotReady);
-
-        for &n in random_numbers.iter() {
-            require!(n >= 1 && n <= 31, ErrorCode::InvalidRandomNumberLength);
+        // Process tickets (simplified, assumes tickets are passed via remaining_accounts)
+        let mut winners_exact = vec![];
+        let mut winners_any = vec![];
+        for ticket_acc in ctx.remaining_accounts.iter() {
+            let ticket = Account::<TicketAccount>::try_from(ticket_acc)?;
+            let digits = [ticket.digit1, ticket.digit2];
+            if digits == winning_digits {
+                winners_exact.push((ticket.player, 1_200_000_000)); // 1.2 SOL
+            } else if (digits[0] == winning_digits[0] && digits[1] == winning_digits[1]) ||
+                     (digits[0] == winning_digits[1] && digits[1] == winning_digits[0]) {
+                winners_any.push((ticket.player, 600_000_000)); // 0.6 SOL
+            }
         }
 
-        let winners = find_winners_with_limit(purchase_tracker, random_numbers, usize::MAX)?;
-        let exact_prize = 1_200_000_000; // 1.2 SOL
-        let any_order_prize = 600_000_000; // 0.6 SOL
-
-        // Group prizes by owner
-        let mut prize_map: std::collections::HashMap<Pubkey, u64> = std::collections::HashMap::new();
-        for (owner, is_exact) in winners.iter() {
-            let prize = if *is_exact { exact_prize } else { any_order_prize };
-            *prize_map.entry(*owner).or_insert(0) += prize;
+        // Distribute prizes
+        for (winner, amount) in winners_exact.iter().chain(winners_any.iter()) {
+            let winner_account = ctx.accounts.system_program.to_account_info(); // Replace with actual winner account
+            transfer(CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.lottery_state.to_account_info(),
+                    to: winner_account,
+                },
+            ), *amount)?;
+            let leaderboard = &mut ctx.accounts.leaderboard;
+            if leaderboard.player == *winner {
+                leaderboard.wins += 1;
+            }
         }
 
-        let total_funds = purchase_tracker.to_account_info().lamports();
-        let ticket_price_lamports = TICKET_PRICE as u64 * purchase_tracker.ticket_count;
-        let donation_pool = total_funds.saturating_sub(ticket_price_lamports);
-        let airdrop_fund = (donation_pool / 2).min(500_000_000); // 0.5 SOL cap
+        // Airdrop: Award 2 SOL + 50% donations
+        let airdrop_amount = 2_000_000_000 + (lottery_state.donation_sum / 2); // 2 SOL + 50% donations
+        let airdrop_account = ctx.accounts.system_program.to_account_info(); // Replace with airdrop_winner account
+        transfer(CpiContext::new(
+            ctx.accounts.system_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.lottery_state.to_account_info(),
+                to: airdrop_account,
+            },
+        ), airdrop_amount)?;
 
-        let mut total_prize_pool = airdrop_fund;
-        for &prize in prize_map.values() {
-            total_prize_pool += prize;
-        }
+        // Reset lottery state
+        lottery_state.ticket_count = 0;
+        lottery_state.prize_pool = 0;
+        lottery_state.donation_sum = 0;
+        lottery_state.draw_timestamp = get_next_draw_time(Clock::get()?.unix_timestamp);
 
-        require!(total_prize_pool <= total_funds, ErrorCode::InsufficientFunds);
-
-        draw_state.airdrop_winner = select_airdrop_winner_with_random(purchase_tracker, aux_random)?;
-        draw_state.draw_executed = true;
-        draw_state.winning_numbers = random_numbers;
-        draw_state.airdrop_fund = airdrop_fund;
-
-        let bump = draw_state.purchase_tracker_bump;
-        let id_ref = ID.as_ref();
-        let seeds = &[b"purchase_tracker".as_ref(), id_ref, &[bump]];
-        let signer_seeds = &[&seeds[..]];
-
-        // Auto-transfer prizes to winners using remaining_accounts
-        let remaining_accounts = ctx.remaining_accounts;
-        for (owner, prize) in prize_map.iter() {
-            let winner_account = remaining_accounts.iter().find(|acc| acc.key() == *owner)
-                .ok_or(ErrorCode::InvalidWinnerAccount)?;
-            invoke_signed(
-                &transfer(
-                    &ctx.accounts.purchase_tracker.key(),
-                    owner,
-                    *prize,
-                ),
-                &[
-                    ctx.accounts.purchase_tracker.to_account_info(),
-                    winner_account.to_account_info(),
-                    ctx.accounts.system_program.to_account_info(),
-                ],
-                signer_seeds,
-            )?;
-        }
-
-        // Auto-transfer airdrop
-        if airdrop_fund > 0 {
-            let airdrop_account = remaining_accounts.iter().find(|acc| acc.key() == draw_state.airdrop_winner)
-                .ok_or(ErrorCode::InvalidWinnerAccount)?;
-            invoke_signed(
-                &transfer(
-                    &ctx.accounts.purchase_tracker.key(),
-                    &draw_state.airdrop_winner,
-                    airdrop_fund,
-                ),
-                &[
-                    ctx.accounts.purchase_tracker.to_account_info(),
-                    airdrop_account.to_account_info(),
-                    ctx.accounts.system_program.to_account_info(),
-                ],
-                signer_seeds,
-            )?;
-        }
-
-        // Reset state for next draw
-        purchase_tracker.tickets.clear();
-        purchase_tracker.ticket_count = 0;
-        draw_state.draw_time = 0;
-        draw_state.airdrop_winner = Pubkey::default();
-        draw_state.draw_executed = false;
-        draw_state.winning_numbers = [0, 0];
-        draw_state.airdrop_fund = 0;
-
-        emit!(DrawSettled {
-            exact_winners: winners.iter().filter(|(_, is_exact)| *is_exact).map(|(owner, _)| *owner).collect(),
-            any_order_winners: winners.iter().filter(|(_, is_exact)| !*is_exact).map(|(owner, _)| *owner).collect(),
-            airdrop_winner: draw_state.airdrop_winner,
-            total_prize: total_prize_pool,
-        });
-
-        Ok(())
-    }
-
-    // Change authority
-    pub fn change_authority(ctx: Context<ChangeAuthority>, new_authority: Pubkey) -> Result<()> {
-        let draw_state = &mut ctx.accounts.draw_state;
-        require!(ctx.accounts.authority.key() == draw_state.authority, ErrorCode::Unauthorized);
-
-        let old = draw_state.authority;
-        draw_state.authority = new_authority;
-        emit!(AuthorityChanged {
-            old_authority: old,
-            new_authority
-        });
-        Ok(())
-    }
-
-    // Set oracle
-    pub fn set_oracle(ctx: Context<SetOracle>, oracle: Pubkey) -> Result<()> {
-        let draw_state = &mut ctx.accounts.draw_state;
-        require!(ctx.accounts.authority.key() == draw_state.authority, ErrorCode::Unauthorized);
-
-        draw_state.oracle = oracle;
-        emit!(OracleUpdated { oracle });
         Ok(())
     }
 }
 
-// === Account Definitions ===
-
 #[derive(Accounts)]
 pub struct Initialize<'info> {
-    #[account(init, payer = authority, seeds = [b"purchase_tracker", ID.as_ref()], bump, space = 8 + 32768)]
-    pub purchase_tracker: Account<'info, PurchaseTracker>,
-
-    #[account(init, payer = authority, seeds = [b"draw_state", ID.as_ref()], bump, space = 8 + 10240)]
-    pub draw_state: Account<'info, DrawState>,
-
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + 32 + 8 + 8 + 8 + 8,
+        seeds = [b"lottery-state"],
+        bump
+    )]
+    pub lottery_state: Account<'info, LotteryState>,
     #[account(mut)]
     pub authority: Signer<'info>,
-
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
 pub struct BuyTicket<'info> {
-    #[account(mut, seeds = [b"purchase_tracker", ID.as_ref()], bump = draw_state.purchase_tracker_bump)]
-    pub purchase_tracker: Account<'info, PurchaseTracker>,
-
-    #[account(seeds = [b"draw_state", ID.as_ref()], bump = draw_state.draw_state_bump)]
-    pub draw_state: Account<'info, DrawState>,
-
     #[account(mut)]
-    pub user: Signer<'info>,
+    pub lottery_state: Account<'info, LotteryState>,
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + 32 + 1 + 1 + 8,
+        seeds = [b"ticket", payer.key().as_ref(), &lottery_state.ticket_count.to_le_bytes()],
+        bump
+    )]
+    pub ticket: Account<'info, TicketAccount>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = 8 + 32 + 8 + 8,
+        seeds = [b"leaderboard", payer.key().as_ref()],
+        bump
+    )]
+    pub leaderboard: Account<'info, LeaderboardAccount>,
+    pub system_program: Program<'info, System>,
+}
 
-    pub authority: UncheckedAccount<'info>,
-
+#[derive(Accounts)]
+pub struct Donate<'info> {
+    #[account(mut)]
+    pub lottery_state: Account<'info, LotteryState>,
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + 32 + 8 + 8,
+        seeds = [b"donation", payer.key().as_ref(), &Clock::get()?.unix_timestamp.to_le_bytes()],
+        bump
+    )]
+    pub donation: Account<'info, DonationAccount>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
 pub struct RequestVrf<'info> {
-    #[account(mut, seeds = [b"draw_state", ID.as_ref()], bump = draw_state.draw_state_bump)]
-    pub draw_state: Account<'info, DrawState>,
-
-    #[account(mut, seeds = [b"purchase_tracker", ID.as_ref()], bump = draw_state.purchase_tracker_bump)]
-    pub purchase_tracker: Account<'info, PurchaseTracker>,
-
+    #[account(mut)]
+    pub lottery_state: Account<'info, LotteryState>,
     #[account(mut)]
     pub authority: Signer<'info>,
-
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
 pub struct FulfillVrf<'info> {
-    #[account(mut, seeds = [b"draw_state", ID.as_ref()], bump = draw_state.draw_state_bump)]
-    pub draw_state: Account<'info, DrawState>,
-
-    #[account(mut, seeds = [b"purchase_tracker", ID.as_ref()], bump = draw_state.purchase_tracker_bump)]
-    pub purchase_tracker: Account<'info, PurchaseTracker>,
-
-    pub oracle: Signer<'info>,
-
+    #[account(mut)]
+    pub lottery_state: Account<'info, LotteryState>,
+    #[account(mut)]
+    pub leaderboard: Account<'info, LeaderboardAccount>,
     pub system_program: Program<'info, System>,
 }
 
-#[derive(Accounts)]
-pub struct ChangeAuthority<'info> {
-    #[account(mut, seeds = [b"draw_state", ID.as_ref()], bump = draw_state.draw_state_bump)]
-    pub draw_state: Account<'info, DrawState>,
-
-    #[account(mut)]
-    pub authority: Signer<'info>,
-}
-
-#[derive(Accounts)]
-pub struct SetOracle<'info> {
-    #[account(mut, seeds = [b"draw_state", ID.as_ref()], bump = draw_state.draw_state_bump)]
-    pub draw_state: Account<'info, DrawState>,
-
-    #[account(mut)]
-    pub authority: Signer<'info>,
-}
-
-// === State ===
-
 #[account]
-pub struct PurchaseTracker {
-    pub tickets: Vec<Ticket>,
+pub struct LotteryState {
+    pub authority: Pubkey,
+    pub ticket_price: u64,
+    pub draw_timestamp: i64,
+    pub prize_pool: u64,
+    pub donation_sum: u64,
     pub ticket_count: u64,
 }
 
 #[account]
-pub struct DrawState {
-    pub draw_time: i64,
-    pub airdrop_winner: Pubkey,
-    pub authority: Pubkey,
-    pub oracle: Pubkey,
-    pub purchase_tracker_bump: u8,
-    pub draw_state_bump: u8,
-    pub draw_executed: bool,
-    pub nonce: u64,
-    pub treasury_seed: u64,
-    pub winning_numbers: [u8; 2],
-    pub airdrop_fund: u64,
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-pub struct Ticket {
-    pub owner: Pubkey,
-    pub numbers: [u8; 2],
+pub struct TicketAccount {
+    pub player: Pubkey,
+    pub digit1: u8,
+    pub digit2: u8,
     pub timestamp: i64,
 }
 
-// === Events ===
-
-#[event]
-pub struct VrfRequested {
-    pub draw_time: i64,
+#[account]
+pub struct DonationAccount {
+    pub donator: Pubkey,
+    pub amount: u64,
+    pub timestamp: i64,
 }
 
-#[event]
-pub struct AuthorityChanged {
-    pub old_authority: Pubkey,
-    pub new_authority: Pubkey,
+#[account]
+pub struct LeaderboardAccount {
+    pub player: Pubkey,
+    pub tickets: u64,
+    pub wins: u64,
 }
-
-#[event]
-pub struct OracleUpdated {
-    pub oracle: Pubkey,
-}
-
-#[event]
-pub struct DrawSettled {
-    pub exact_winners: Vec<Pubkey>,
-    pub any_order_winners: Vec<Pubkey>,
-    pub airdrop_winner: Pubkey,
-    pub total_prize: u64,
-}
-
-// === Errors ===
 
 #[error_code]
-pub enum ErrorCode {
-    #[msg("Number must be between 1 and 31")]
-    InvalidNumber,
-    #[msg("Numbers cannot be the same")]
-    DuplicateNumber,
-    #[msg("Draw not ready")]
-    DrawNotReady,
-    #[msg("Ticket sales are closed for this draw")]
-    TicketSalesClosed,
-    #[msg("User already bought maximum tickets for this draw")]
-    MaxTicketsPerUserReached,
-    #[msg("Not enough tickets sold to start draw")]
-    InsufficientTickets,
-    #[msg("Invalid random number or out of allowed range")]
-    InvalidRandomNumberLength,
-    #[msg("No tickets available for airdrop")]
-    NoTicketsForAirdrop,
-    #[msg("Unauthorized action")]
-    Unauthorized,
-    #[msg("Maximum supply reached")]
-    MaxSupplyReached,
-    #[msg("Integer math overflow")]
-    MathOverflow,
-    #[msg("Insufficient PDA funds")]
+pub enum LotteryError {
+    #[msg("Invalid digit (must be 1-31)")]
+    InvalidDigit,
+    #[msg("Digits must be unique")]
+    DuplicateDigits,
+    #[msg("Insufficient funds for ticket purchase or donation")]
     InsufficientFunds,
-    #[msg("Invalid winner account")]
-    InvalidWinnerAccount,
-    #[msg("Invalid nonce")]
-    InvalidNonce,
+    #[msg("Invalid donation amount")]
+    InvalidAmount,
+    #[msg("Draw not due yet")]
+    DrawNotDue,
+    #[msg("No tickets purchased for draw")]
+    NoTickets,
+}
+
+fn get_next_draw_time(current_time: i64) -> i64 {
+    let one_day = 24 * 60 * 60;
+    let draw_time_utc = 14 * 60 * 60 - 8 * 60 * 60; // 2:00 PM UTC+8 to UTC
+    let current_day_start = current_time - (current_time % one_day);
+    let next_draw = current_day_start + draw_time_utc + one_day;
+    if current_time >= current_day_start + draw_time_utc {
+        next_draw + one_day
+    } else {
+        next_draw
+    }
 }
