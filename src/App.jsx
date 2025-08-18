@@ -16,7 +16,7 @@ import MatrixBackground from "./components/MatrixBackground";
 import ParticleCanvas from "./components/ParticleCanvas";
 import Header from "./components/Header";
 import GameCarousel from "./components/GameCarousel";
-import Dodos from "./games/Dodos";
+import Dodos from "./games/dos/Dodos";
 import Footer from "./components/Footer";
 import "./index.css";
 import "./App.css";

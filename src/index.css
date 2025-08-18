@@ -628,3 +628,119 @@ a:visited {
     display: none;
   }
 }
+
+/* Dodos Game Styles */
+.dodos-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.game-area {
+  width: 100%;
+  background: rgba(17, 17, 17, 0.8);
+  border: 2px solid var(--accent-color);
+  border-radius: 1rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.game-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.game-header h2 {
+  font-family: "Orbitron", monospace;
+  color: var(--hover-accent);
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+.game-stats {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+  font-family: "Courier New", Courier, monospace;
+  font-weight: bold;
+}
+
+.game-stats span {
+  color: var(--hover-accent);
+}
+
+.dodo-play-area {
+  position: relative;
+  height: 400px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px dashed var(--accent-color);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.dodo {
+  position: absolute;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="%2300cc00"/><circle cx="35" cy="40" r="5" fill="black"/><circle cx="65" cy="40" r="5" fill="black"/><path d="M30,65 Q50,80 70,65" stroke="black" stroke-width="3" fill="none"/></svg>');
+  background-size: contain;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.dodo:hover {
+  transform: scale(1.1);
+}
+
+.game-over {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+}
+
+.game-over h3 {
+  color: #ff4500;
+  font-family: "Orbitron", monospace;
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+.game-over p {
+  font-size: 1.2rem;
+  margin-bottom: 1.5rem;
+}
+
+.start-button {
+  margin-top: 0.5rem;
+  padding: 0.5rem 1.5rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .dodo-play-area {
+    height: 300px;
+  }
+  
+  .game-stats {
+    gap: 1rem;
+    font-size: 0.9rem;
+  }
+  
+  .game-header h2 {
+    font-size: 1.3rem;
+  }
+}
