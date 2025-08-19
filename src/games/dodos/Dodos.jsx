@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { debounce } from "lodash";
 import { FixedSizeList } from "react-window";
 import { useWallet } from "@solana/wallet-adapter-react";
-import DonationContainer from "../../components/DonationContainer";
 import "./dodos.css";
 
 const TicketCard = React.memo(({ ticket, onCheckResults }) => (
@@ -252,7 +251,6 @@ export default function Dodos({ onBack }) {
           )}
         </div>
 
-        <DonationContainer />
       </div>
     </Suspense>
   );

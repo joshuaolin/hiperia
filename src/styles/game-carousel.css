@@ -1,3 +1,4 @@
+/* ===== Game Carousel ===== */
 .carousel-container {
   position: relative;
   max-width: 95vw;
@@ -84,11 +85,11 @@
 }
 
 .prev-btn {
-  left: 32px;
+  left: -110px;
 }
 
 .next-btn {
-  right: 32px;
+  right: -110px;
 }
 
 .mobile-indicators {
@@ -110,15 +111,71 @@
   background: var(--hover-accent);
 }
 
-.wallet-adapter-button.matrix-button {
+.wallet-btn {
   display: flex;
-  align-items: center;      /* vertical centering */
-  justify-content: center;  /* horizontal centering */
-  text-align: center;       /* text centered inside */
-  width: 100%;              /* optional, makes button expand full width of wallet-btn */
-  max-width: 200px;         /* keep a nice size, adjust as needed */
+  justify-content: center; /* Center align button */
+  margin-top: 1rem;
 }
 
+.matrix-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-color);
+  color: #000;
+  padding: 0.6rem 1.2rem;
+  font-size: clamp(0.9rem, 2.5vw, 1.1rem);
+  border-radius: 0.8rem;
+  border: 2px solid var(--accent-color);
+  font-family: "Orbitron", monospace;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+  width: auto;
+  min-width: 150px;
+}
+
+.matrix-button:hover {
+  background: #000;
+  color: var(--accent-color);
+  transform: scale(1.05);
+}
+
+/* Matrix button animation */
+.game-title .hiperia-ticker-text {
+  font-family: "Orbitron", sans-serif;
+  font-size: clamp(1.2rem, 3vw, 2rem);
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  color: #00cc00;
+  text-shadow: 
+    0 0 5px #00cc00,
+    0 0 10px #00cc00,
+    0 0 20px #00cc00,
+    0 0 40px #00cc00,
+    0 0 80px #00cc00;
+  animation: pulse-glow 2s infinite alternate;
+}
+
+@keyframes pulse-glow {
+  from {
+    text-shadow: 
+      0 0 5px #00cc00,
+      0 0 10px #00cc00,
+      0 0 20px #00cc00;
+  }
+  to {
+    text-shadow: 
+      0 0 10px #00cc00,
+      0 0 20px #00cc00,
+      0 0 40px #00cc00,
+      0 0 80px #00cc00;
+  }
+}
+
+/* Responsive Styles */
 @media (max-width: 768px) {
   .carousel-container {
     max-width: 95vw;
@@ -153,16 +210,26 @@
   .next-btn {
     right: 4px;
   }
+  
+  .matrix-button {
+    padding: 0.5rem 1rem;
+    font-size: clamp(0.8rem, 2.5vw, 1rem);
+  }
 }
 
 @media (max-width: 480px) {
   .carousel-btn {
     display: none;
   }
+
+  .matrix-button {
+    width: 100%;
+    max-width: 200px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .carousel-btn {
+  .carousel-btn, .matrix-button {
     transition: none;
   }
 }

@@ -16,6 +16,7 @@
     "@solana/web3.js": "^1.98.4",
     "framer-motion": "^12.23.12",
     "lodash": "^4.17.21",
+    "prop-types": "^15.8.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-swipeable": "^7.0.2",

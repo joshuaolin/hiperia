@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { useSwipeable } from "react-swipeable";
+import DonationContainer from "./DonationContainer";
 import "../styles/game-carousel.css";
 
 const games = [
   {
     id: 1,
-    name: "DODOS [SOON]",
+    name: "DODOS [OCT 2025]",
     description: [
       {
         title: "How to Play",
@@ -30,7 +31,7 @@ const games = [
   },
   {
     id: 2,
-    name: "LEMON KICK [TBA]",
+    name: "LEMON KICK [DEC 2025]",
     description: [
       {
         title: "How to Play",
@@ -45,12 +46,35 @@ const games = [
       {
         title: "Prizes",
         items: [
-          "Payouts vary based on chosen win probability: e.g., 0.095 SOL for 5% win rate, 0.0075 SOL SOL for 60% win rate, 0.004736 SOL for 95% win rate",
-          "Prizes automatically credited to player's wallet instantly"
+          "Payouts vary based on chosen win probability: e.g., 0.095 SOL for 5% win rate, 0.0075 SOL for 60% win rate, 0.004736 SOL for 95% win rate",
+          "Prizes automatically credited to player's wallet instantly",
         ],
       },
     ],
   },
+  {
+    id: 3,
+    name: "FRUIT GAME [2026]",
+    description: [
+      {
+        title: "How to Play",
+        items: [
+          "TBA"
+        ],
+      },
+      {
+        title: "Prizes",
+        items: [
+          "TBA"
+        ],
+      },
+    ],
+  },
+  {
+    id: 4,
+    name: "SUPPORT HIPERIA",
+    description: []
+  }
 ];
 
 export default function GameCarousel({ onEnterGame }) {
@@ -67,65 +91,65 @@ export default function GameCarousel({ onEnterGame }) {
   });
 
   return (
-    <div className="carousel-container" {...swipeHandlers}>
-      <motion.div
-        key={games[current].id}
-        initial={{ opacity: 0, x: 100 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: -100 }}
-        transition={{ duration: 0.5 }}
-        className="game-card"
-      >
-        <h2 className="game-title">{games[current].name}</h2>
-        <div className="game-description">
-          {games[current].description.map((section, sectionIndex) => (
-            <div key={sectionIndex} className="description-section">
-              <h3 className="section-title">{section.title}:</h3>
-              <ul className="bullet-list">
-                {section.items.map((item, itemIndex) => (
-                  <li key={itemIndex}>{item}</li>
-                ))}
-              </ul>
+    <div>
+      <div className="carousel-container" {...swipeHandlers}>
+        <motion.div
+          key={games[current].id}
+          initial={{ opacity: 0, x: 100 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -100 }}
+          transition={{ duration: 0.5 }}
+          className="game-card"
+        >
+          <h2 className="game-title">
+            <span className="ticker-text hiperia-ticker-text">{games[current].name}</span>
+          </h2>
+
+          <div className="game-description">
+            {games[current].description.map((section, sectionIndex) => (
+              <div key={sectionIndex} className="description-section">
+                <h3 className="section-title">{section.title}:</h3>
+                <ul className="bullet-list">
+                  {section.items.map((item, itemIndex) => (
+                    <li key={itemIndex}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+
+          {games[current].name.includes("DODOS") && (
+            <div className="wallet-btn">
+              <button
+                className="matrix-button"
+                onClick={() => onEnterGame("Dodos")}
+                aria-label="Enter DODOS Game"
+              >
+                ENTER GAME
+              </button>
             </div>
+          )}
+
+          {games[current].name.includes("SUPPORT") && <DonationContainer />}
+        </motion.div>
+
+        <button className="carousel-btn prev-btn" onClick={prevGame} aria-label="Previous game">
+          ⬅
+        </button>
+        <button className="carousel-btn next-btn" onClick={nextGame} aria-label="Next game">
+          ➡
+        </button>
+
+        <div className="mobile-indicators">
+          {games.map((game, index) => (
+            <span
+              key={game.id}
+              className={`indicator-dot ${index === current ? "active" : ""}`}
+              onClick={() => setCurrent(index)}
+              aria-label={`Go to game ${index + 1}`}
+            />
           ))}
         </div>
-        {games[current].name.includes("DODOS") && (
-          <div className="wallet-btn">
-            <button
-              className="wallet-adapter-button matrix-button"
-              onClick={() => onEnterGame("Dodos")}
-              aria-label="Enter DODOS Game"
-            >
-              ENTER GAME
-            </button>
-          </div>
-        )}
-      </motion.div>
-
-      <button
-        className="carousel-btn prev-btn "
-        onClick={prevGame}
-        aria-label="Previous game"
-      >
-        ⬅
-      </button>
-      <button
-        className="carousel-btn next-btn"
-        onClick={nextGame}
-        aria-label="Next game"
-      >
-        ➡
-      </button>
-
-      <div className="mobile-indicators">
-        {games.map((game, index) => (
-          <span
-            key={game.id}
-            className={`indicator-dot ${index === current ? "active" : ""}`}
-            onClick={() => setCurrent(index)}
-            aria-label={`Go to game ${index + 1}`}
-          />
-        ))}
       </div>
     </div>
   );
