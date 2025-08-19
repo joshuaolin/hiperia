@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { debounce } from "lodash";
 import { FixedSizeList } from "react-window";
-import DonationContainer from "../../components/DonationContainer";
-import "../../index.css";
-import "./dodos.css";
 import { useWallet } from "@solana/wallet-adapter-react";
+import DonationContainer from "../../components/DonationContainer";
+import "./dodos.css";
 
 const TicketCard = React.memo(({ ticket, onCheckResults }) => (
   <div className="ticket-card">
@@ -46,7 +45,7 @@ export default function Dodos({ onBack }) {
   const [transactionPending, setTransactionPending] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
 
-  const calculateNextDraw = () => {
+  const calculateNextDraw = useCallback(() => {
     const now = new Date();
     const asiaTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
     const drawTimes = [14, 15, 16];
@@ -74,7 +73,7 @@ export default function Dodos({ onBack }) {
       month: "short",
       day: "numeric",
     });
-  };
+  }, []);
 
   useEffect(() => {
     setLastResults([
@@ -86,14 +85,15 @@ export default function Dodos({ onBack }) {
     updateNextDraw();
     const interval = setInterval(updateNextDraw, 60 * 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [calculateNextDraw]);
 
   const handleNumberSelect = useCallback(
     debounce((number) => {
       setSelectedNumbers((prev) => {
         if (prev.includes(number)) {
           return prev.filter((n) => n !== number);
-        } else if (prev.length < 2) {
+        }
+        if (prev.length < 2) {
           return [...prev, number];
         }
         return prev;
@@ -103,10 +103,7 @@ export default function Dodos({ onBack }) {
   );
 
   const purchaseTicket = async () => {
-    if (!connected) {
-      return;
-    }
-    if (selectedNumbers.length !== 2) {
+    if (!connected || selectedNumbers.length !== 2) {
       return;
     }
     try {
@@ -122,7 +119,7 @@ export default function Dodos({ onBack }) {
           { time: "4:00 PM", matched: false, prize: 0 },
         ],
       };
-      setTickets([...tickets, newTicket]);
+      setTickets((prev) => [...prev, newTicket]);
       setSelectedNumbers([]);
       setSuccessMessage(`Successfully purchased ticket for ${selectedNumbers.join(" and ")}!`);
       setTimeout(() => setSuccessMessage(""), 5000);
@@ -134,7 +131,7 @@ export default function Dodos({ onBack }) {
     }
   };
 
-  const checkResults = (ticket) => {
+  const checkResults = useCallback((ticket) => {
     const updatedTicket = { ...ticket };
     let totalWon = 0;
 
@@ -151,19 +148,19 @@ export default function Dodos({ onBack }) {
       }
     });
 
-    if (totalWon > 0) {
-      alert(`Congratulations! You won ${totalWon} SOL from this ticket!`);
-    } else {
-      alert("No wins for this ticket yet. Better luck next time!");
-    }
-  };
+    alert(
+      totalWon > 0
+        ? `Congratulations! You won ${totalWon} SOL from this ticket!`
+        : "No wins for this ticket yet. Better luck next time!"
+    );
+  }, []);
 
   return (
     <Suspense fallback={<div className="loading-spinner">Loading...</div>}>
       <div className="dodos-container">
         <div className="wallet-btn back-button-container">
           <button
-            className="start-game-button wallet-adapter-button matrix-button"
+            className="start-game-button wallet-adapter-button matrix-button back-btn"
             onClick={onBack}
             type="button"
             aria-label="Back to Game Carousel"
@@ -173,7 +170,8 @@ export default function Dodos({ onBack }) {
         </div>
 
         <div className="game-area">
-                    <div className="game-sections">
+          <h2 className="game-title">DODOS</h2>
+          <div className="game-sections">
             <div className="game-section number-selection-section">
               <h3>SELECT YOUR NUMBERS</h3>
               <div className="number-grid">

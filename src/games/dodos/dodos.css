@@ -6,7 +6,7 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  max-width: min(95vw, 360px); /* Compact for mobile */
+  max-width: min(95vw, 360px);
   margin: 0 auto;
   padding: 0.25rem;
   position: relative;
@@ -16,7 +16,7 @@
 
 .game-area {
   width: 100%;
-  background: rgba(17, 17, 17, 0.8);
+  background: var(--section-bg);
   border: 2px solid var(--accent-color);
   border-radius: 0.75rem;
   padding: 0.5rem;
@@ -141,6 +141,31 @@
   transform: scale(0.95);
 }
 
+.back-btn, .donate-btn {
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.8);
+  color: var(--text-color);
+  border: 2px solid var(--accent-color);
+  font-family: "Courier New", Courier, monospace;
+  font-size: clamp(0.8rem, 2.5vw, 1rem);
+  padding: 0.4rem 1rem;
+  height: 2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  white-space: nowrap;
+  will-change: background-color;
+}
+
+.back-btn:hover, .donate-btn:hover {
+  background: var(--accent-color);
+  color: #000;
+}
+
+.back-btn:active, .donate-btn:active {
+  transform: scale(0.95);
+}
+
 .button-text {
   display: inline-block;
   overflow: hidden;
@@ -242,7 +267,6 @@
   font-size: clamp(0.7rem, 2vw, 0.9rem);
 }
 
-/* Desktop Layout */
 @media (min-width: 768px) {
   .dodos-container {
     max-width: 800px;
@@ -269,6 +293,12 @@
 
   .tickets-grid {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+
+  .back-btn, .donate-btn {
+    padding: 0.3rem 0.8rem;
+    font-size: clamp(0.7rem, 2vw, 0.9rem);
+    height: 1.8rem;
   }
 }
 
@@ -303,7 +333,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .number-btn, .matrix-button, .check-results-btn, .top-donator, .recent-donator, .carousel-btn {
+  .number-btn, .matrix-button, .check-results-btn, .back-btn, .donate-btn {
     transition: none;
     animation: none;
   }

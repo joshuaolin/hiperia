@@ -1,6 +1,6 @@
 import React from "react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import "../index.css";
+import "../styles/header.css";
 
 export default function Header() {
   return (

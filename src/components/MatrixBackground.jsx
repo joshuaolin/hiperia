@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import "../styles/matrix-background.css";
 
 export default function MatrixBackground() {
   const canvasRef = useRef(null);
@@ -16,11 +17,11 @@ export default function MatrixBackground() {
     const chars =
       "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ";
     const fontSize = 14;
-    let columns = canvas.width / fontSize;
-    let drops = Array(Math.floor(columns)).fill(0);
+    let columns = Math.floor(canvas.width / fontSize);
+    let drops = Array(columns).fill(0);
 
     const drawMatrix = () => {
-      ctx.fillStyle = "rgba(0,0,0,0.05)";
+      ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#00cc00";
       ctx.font = `${fontSize}px Courier New`;
@@ -42,18 +43,21 @@ export default function MatrixBackground() {
     };
     animate();
 
-    window.addEventListener("resize", () => {
+    const handleResize = () => {
       resize();
-      columns = canvas.width / fontSize;
-      drops = Array(Math.floor(columns)).fill(0);
-    });
+      columns = Math.floor(canvas.width / fontSize);
+      drops = Array(columns).fill(0);
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   return (
     <canvas
       ref={canvasRef}
       id="matrix-bg"
-      className="fixed top-0 left-0 w-full h-full -z-50"
-    ></canvas>
+      className="matrix-bg"
+    />
   );
 }

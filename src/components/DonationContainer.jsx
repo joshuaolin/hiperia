@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import "../index.css";
+import React, { useState, useMemo } from "react";
+import "../styles/donation-container.css";
 
 const leaderboardData = [
   { address: "0x123...abc", tickets: 50, wins: 3, donation: 5 },
@@ -24,10 +24,12 @@ export default function DonationContainer() {
     setAmount("");
   };
 
-  const topDonator = leaderboardData.reduce((prev, curr) =>
-    prev.donation > curr.donation ? prev : curr
-  );
-  const recentDonator = leaderboardData[1];
+  const { topDonator, recentDonator } = useMemo(() => ({
+    topDonator: leaderboardData.reduce((prev, curr) =>
+      prev.donation > curr.donation ? prev : curr
+    ),
+    recentDonator: leaderboardData[1] || leaderboardData[0],
+  }), []);
 
   return (
     <div className="donation-container game-card">

@@ -1,9 +1,0 @@
-.hiperia-ticker-text {
-  font-size: 10rem;
-}
-
-@media (max-width: 640px) {
-  .hiperia-ticker-text {
-    font-size: 5.5rem;
-  }
-}

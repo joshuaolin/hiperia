@@ -16,15 +16,11 @@ import MatrixBackground from "./components/MatrixBackground";
 import ParticleCanvas from "./components/ParticleCanvas";
 import Header from "./components/Header";
 import GameCarousel from "./components/GameCarousel";
-import Dodos from "./games/dos/Dodos";
+import Dodos from "./games/dodos/Dodos";
 import Footer from "./components/Footer";
-import "./index.css";
-import "./App.css";
-import "@solana/wallet-adapter-react-ui/styles.css";
+import "./styles/global.css";
+import "./styles/header.css";
 
-// ------------------
-// Landing Page
-// ------------------
 function LandingPage() {
   return (
     <div className="header-container">
@@ -50,9 +46,6 @@ function LandingPage() {
   );
 }
 
-// ------------------
-// Content Wrapper
-// ------------------
 function ContentWrapper() {
   const { connected } = useWallet();
   const [currentView, setCurrentView] = useState(null);
@@ -78,10 +71,7 @@ function ContentWrapper() {
   );
 }
 
-// ------------------
-// Main App
-// ------------------
-function App() {
+export default function App() {
   const wallets = [new PhantomWalletAdapter(), new SolflareWalletAdapter()];
 
   return (
@@ -102,5 +92,3 @@ function App() {
     </div>
   );
 }
-
-export default App;

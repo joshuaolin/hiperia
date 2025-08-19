@@ -1,65 +1,55 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { useSwipeable } from "react-swipeable";
-import "../index.css";
+import "../styles/game-carousel.css";
 
 const games = [
   {
     id: 1,
-    name: "DODOS [12.12.25]",
+    name: "DODOS [SOON]",
     description: [
       {
         title: "How to Play",
         items: [
           "Players select 2 unique digits from 1 to 31 (no duplicates allowed)",
           "Each ticket costs 0.005 SOL, payable via Solana-compatible wallet",
-          "Draws occur daily at 2:00, 3:00, and 4:00 PM Asia time (UTC+8)",
+          "Draws occur daily at 2:00, 3:00, and 4:00 PM Asia time (UTC+8), using open-source RNG",
           "Offering three chances to win per ticket",
           "Check results after daily draw",
-          "Winnings automatically credited instantly"
-        ]
+          "Winnings automatically credited instantly",
+        ],
       },
       {
         title: "Prizes",
         items: [
           "Match both digits in exact order to win 1.2 SOL",
-          "Match both digits in any order to win 0.01 SOL",
-          "Prizes automatically credited to player's wallet instantly"
-        ]
+          "Prizes automatically credited to player's wallet instantly",
+        ],
       },
-      {
-        title: "Airdrop Eligibility",
-        items: [
-          "TBA",
-          //"Chance to win up to 2 SOL plus 50% of weekly donations",
-          //"More tickets purchased = higher airdrop win chances"
-        ]
-      }
-    ]
+    ],
   },
   {
     id: 2,
-    name: "9 LITTLE LEMONS [TBA]",
-    // description: [
-    //   {
-    //     title: "How to Play",
-    //     items: [
-    //       "TBA"
-    //     ]
-    //   },
-    //   {
-    //     title: "Prizes",
-    //     items: [
-    //       "TBA"
-    //     ]
-    //   },
-    //   {
-    //     title: "Airdrop Eligibility",
-    //     items: [
-    //       "TBA"
-    //     ]
-    //   }
-    // ]
+    name: "LEMON KICK [TBA]",
+    description: [
+      {
+        title: "How to Play",
+        items: [
+          "Choose a win probability from 5% to 95% (in 5% increments) and predict if the kick goes 'left' or 'right'",
+          "Each ticket costs 0.005, payable via Solana-compatible wallet",
+          "Draws occur instantly using open-source RNG",
+          "Higher win probabilities yield smaller payouts, lower probabilities offer larger payouts",
+          "Check results instantly after the kick",
+        ],
+      },
+      {
+        title: "Prizes",
+        items: [
+          "Payouts vary based on chosen win probability: e.g., 0.095 SOL for 5% win rate, 0.0075 SOL SOL for 60% win rate, 0.004736 SOL for 95% win rate",
+          "Prizes automatically credited to player's wallet instantly"
+        ],
+      },
+    ],
   },
 ];
 
@@ -70,10 +60,10 @@ export default function GameCarousel({ onEnterGame }) {
   const prevGame = () => setCurrent((prev) => (prev - 1 + games.length) % games.length);
 
   const swipeHandlers = useSwipeable({
-    onSwipedLeft: () => nextGame(),
-    onSwipedRight: () => prevGame(),
+    onSwipedLeft: nextGame,
+    onSwipedRight: prevGame,
     preventDefaultTouchmoveEvent: true,
-    trackMouse: true
+    trackMouse: true,
   });
 
   return (
@@ -87,22 +77,18 @@ export default function GameCarousel({ onEnterGame }) {
         className="game-card"
       >
         <h2 className="game-title">{games[current].name}</h2>
-        {Array.isArray(games[current].description) ? (
-          <div className="game-description">
-            {games[current].description.map((section, sectionIndex) => (
-              <div key={sectionIndex} className="description-section">
-                <h3 className="section-title">{section.title}:</h3>
-                <ul className="bullet-list">
-                  {section.items.map((item, itemIndex) => (
-                    <li key={itemIndex}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="game-description">{games[current].description}</p>
-        )}
+        <div className="game-description">
+          {games[current].description.map((section, sectionIndex) => (
+            <div key={sectionIndex} className="description-section">
+              <h3 className="section-title">{section.title}:</h3>
+              <ul className="bullet-list">
+                {section.items.map((item, itemIndex) => (
+                  <li key={itemIndex}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
         {games[current].name.includes("DODOS") && (
           <div className="wallet-btn">
             <button
@@ -116,16 +102,15 @@ export default function GameCarousel({ onEnterGame }) {
         )}
       </motion.div>
 
-      {/* Navigation buttons */}
-      <button 
-        className="carousel-btn prev-btn matrix-button" 
+      <button
+        className="carousel-btn prev-btn "
         onClick={prevGame}
         aria-label="Previous game"
       >
         ⬅
       </button>
-      <button 
-        className="carousel-btn next-btn matrix-button" 
+      <button
+        className="carousel-btn next-btn"
         onClick={nextGame}
         aria-label="Next game"
       >
@@ -134,10 +119,11 @@ export default function GameCarousel({ onEnterGame }) {
 
       <div className="mobile-indicators">
         {games.map((game, index) => (
-          <span 
+          <span
             key={game.id}
-            className={`indicator-dot ${index === current ? 'active' : ''}`}
+            className={`indicator-dot ${index === current ? "active" : ""}`}
             onClick={() => setCurrent(index)}
+            aria-label={`Go to game ${index + 1}`}
           />
         ))}
       </div>

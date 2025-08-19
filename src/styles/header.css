@@ -1,0 +1,74 @@
+header {
+  background: var(--header-bg);
+  padding: 0.5rem;
+  border-block: 2px solid var(--accent-color);
+  text-align: center;
+  z-index: 100;
+}
+
+.header-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex: 1;
+}
+
+.header-content {
+  text-align: center;
+  padding: 0.5rem;
+}
+
+.header-description {
+  font-size: clamp(0.8rem, 2.5vw, 1rem);
+  max-width: 600px;
+  margin: 0.5rem auto;
+  text-align: center;
+}
+
+.ticker {
+  overflow: hidden;
+  white-space: nowrap;
+  width: 100%;
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+.ticker-text {
+  display: inline-block;
+  font-family: "Orbitron", monospace;
+  font-size: clamp(1.5rem, 5vw, 3rem);
+  color: var(--hover-accent);
+  text-shadow: 0 0 4px var(--accent-color);
+  animation: scroll 20s linear infinite;
+}
+
+.ticker-text.hiperia-ticker-text {
+  font-size: clamp(5.5rem, 10vw, 10rem);
+}
+
+.ticker-text:hover, .ticker-text:focus {
+  animation-play-state: paused;
+}
+
+@keyframes scroll {
+  from { transform: translateX(100%); }
+  to { transform: translateX(-100%); }
+}
+
+@media (max-width: 768px) {
+  header {
+    padding: 0.25rem;
+    background: rgba(0, 0, 0, 0.6);
+  }
+}
+
+@media (max-width: 640px) {
+  .ticker-text {
+    font-size: clamp(1.2rem, 3vw, 1.5rem);
+    animation-duration: 15s;
+  }
+  
+  .ticker-text.hiperia-ticker-text {
+    font-size: clamp(5.5rem, 6vw, 5.5rem);
+  }
+}

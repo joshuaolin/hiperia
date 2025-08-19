@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import "../styles/particle-canvas.css";
 
 class Particle {
   constructor(x, y) {
@@ -10,14 +11,16 @@ class Particle {
     this.opacity = 1;
     this.color = "#00ff00";
   }
+
   update() {
     this.x += this.speedX;
     this.y += this.speedY;
     this.opacity -= 0.02;
     this.size *= 0.98;
   }
+
   draw(ctx) {
-    ctx.fillStyle = `rgba(0,255,0,${this.opacity})`;
+    ctx.fillStyle = `rgba(0, 255, 0, ${this.opacity})`;
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
     ctx.fill();
@@ -38,40 +41,42 @@ export default function ParticleCanvas() {
     };
     resize();
 
-    function createParticles(e) {
+    const createParticles = (e) => {
       const maxParticles = window.innerWidth <= 640 ? 10 : 20;
       if (particles.current.length < 100) {
         for (let i = 0; i < maxParticles; i++) {
           particles.current.push(new Particle(e.clientX, e.clientY));
         }
       }
-    }
+    };
 
-    function animate() {
+    const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       for (let i = particles.current.length - 1; i >= 0; i--) {
         particles.current[i].update();
         particles.current[i].draw(ctx);
-        if (
-          particles.current[i].opacity <= 0 ||
-          particles.current[i].size <= 0.1
-        ) {
+        if (particles.current[i].opacity <= 0 || particles.current[i].size <= 0.1) {
           particles.current.splice(i, 1);
         }
       }
       requestAnimationFrame(animate);
-    }
+    };
 
     document.body.addEventListener("mousemove", createParticles);
     window.addEventListener("resize", resize);
     animate();
+
+    return () => {
+      document.body.removeEventListener("mousemove", createParticles);
+      window.removeEventListener("resize", resize);
+    };
   }, []);
 
   return (
     <canvas
       ref={canvasRef}
       id="particle-canvas"
-      className="fixed top-0 left-0 w-full h-full -z-40"
-    ></canvas>
+      className="particle-canvas"
+    />
   );
 }
