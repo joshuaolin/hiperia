@@ -36,7 +36,7 @@ const games = [
       {
         title: "How to Play",
         items: [
-          "Choose a win probability from 5% to 95% (in 5% increments) and predict if the kick goes 'left' or 'right'",
+          "Choose a win probability from 5% to 60% (in 5% increments) and predict if the kick goes 'left' or 'right'",
           "Each ticket costs 0.005, payable via Solana-compatible wallet",
           "Draws occur instantly using open-source RNG",
           "Higher win probabilities yield smaller payouts, lower probabilities offer larger payouts",
@@ -46,7 +46,7 @@ const games = [
       {
         title: "Prizes",
         items: [
-          "Payouts vary based on chosen win probability: e.g., 0.095 SOL for 5% win rate, 0.0075 SOL for 60% win rate, 0.004736 SOL for 95% win rate",
+          "Payouts vary based on chosen win probability: e.g., 0.095 SOL for 5% win rate, 0.0075 SOL for 60% win rate",
           "Prizes automatically credited to player's wallet instantly",
         ],
       },

@@ -4,7 +4,7 @@ import "../styles/donation-container.css";
 
 // Mock data (replace with API call in production)
 const leaderboardData = [
-  { address: "0x123...abc", donation: 1000 },
+  { address: "0x123...abc", donation: 5 },
   { address: "0x456...def", donation: 2 },
   { address: "0x789...ghi", donation: 1 },
   { address: "0xabc...jkl", donation: 0.5 },
