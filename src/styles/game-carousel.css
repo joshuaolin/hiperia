@@ -114,7 +114,7 @@
 .wallet-btn {
   display: flex;
   justify-content: center; /* Center align button */
-  margin-top: 1rem;
+  /*margin-top: 0.1rem;*/
 }
 
 .matrix-button {
