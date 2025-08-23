@@ -5,13 +5,12 @@ import * as anchor from "@coral-xyz/anchor";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { useWallet } from "@solana/wallet-adapter-react";
 
-import idl from "../idl/donation_program.json"; // make sure this file exists
+import idl from "../idl/donation_program.json";
 import "../styles/donation-container.css";
 
-const programID = new PublicKey(
-  idl.metadata?.address || "9bGeMZAaj9Tiw9Qwh9Uv2hh7F56tPCCc5qDTcREsMqJC"
-);
+const programID = new PublicKey(idl.address);
 const network = "https://api.devnet.solana.com";
+const opts = { commitment: "processed" };
 
 function DonatorCard({ title, donator, className }) {
   return (
@@ -126,7 +125,7 @@ export default function DonationContainer() {
   const [leaderboard, setLeaderboard] = useState([]);
 
   const fetchLeaderboard = async () => {
-    // TODO: fetch PDAs from chain
+    // TODO: fetch from chain (for now, mock data)
     setLeaderboard([
       { address: "mock1", donation: 2 },
       { address: "mock2", donation: 1.5 },
@@ -140,11 +139,25 @@ export default function DonationContainer() {
         return;
       }
 
-      const connection = new Connection(network, "processed");
-      const provider = new anchor.AnchorProvider(connection, wallet, {
-        commitment: "processed",
-      });
+      const connection = new Connection(network, opts.commitment);
+
+      const provider = new anchor.AnchorProvider(
+        connection,
+        {
+          publicKey: wallet.publicKey,
+          signTransaction: wallet.signTransaction,
+          signAllTransactions: wallet.signAllTransactions,
+        },
+        opts
+      );
+
+      // debug logs para makita kung ano laman ng IDL
+      console.log("programID:", programID.toBase58());
+      console.log("idl keys:", Object.keys(idl));
+      console.log("idl.accounts:", idl.accounts);
+
       const program = new anchor.Program(idl, programID, provider);
+      console.log("program instantiated:", program);
 
       const lamports = parseFloat(amount) * anchor.web3.LAMPORTS_PER_SOL;
       if (!lamports || lamports <= 0) {
@@ -159,11 +172,7 @@ export default function DonationContainer() {
         programID
       );
       const [donationPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("donation"),
-          wallet.publicKey.toBuffer(),
-          new anchor.BN(Date.now() / 1000).toArrayLike(Buffer, "le", 8),
-        ],
+        [Buffer.from("donation"), wallet.publicKey.toBuffer()],
         programID
       );
 
@@ -181,8 +190,8 @@ export default function DonationContainer() {
       fetchLeaderboard();
       setAmount("");
     } catch (e) {
-      console.error(e);
-      setError("⚠️ Donation failed.");
+      console.error("donation error:", e);
+      setError("⚠️ Donation failed. Check console.");
     }
   };
 
