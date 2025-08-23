@@ -1,9 +1,9 @@
 [toolchain]
 anchor_version = "0.31.1"
-solana_version = "1.18.25"
+solana_version = "2.3.7"
 
-[programs.localnet]
-hiperia_program = "B71ikRSMNVSAoxsYPZarMnghd5zztXzUxomTtRMvsGAz"
+[programs.devnet]
+hiperia_program = "9bGeMZAaj9Tiw9Qwh9Uv2hh7F56tPCCc5qDTcREsMqJC"
 
 [registry]
 url = "https://api.apr.dev"

@@ -1,17 +1,7 @@
 import React, { useState } from "react";
-import {
-  ConnectionProvider,
-  WalletProvider,
-  useWallet,
-} from "@solana/wallet-adapter-react";
-import {
-  WalletModalProvider,
-  WalletMultiButton,
-} from "@solana/wallet-adapter-react-ui";
-import {
-  PhantomWalletAdapter,
-  SolflareWalletAdapter,
-} from "@solana/wallet-adapter-wallets";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+
 import MatrixBackground from "./components/MatrixBackground";
 import ParticleCanvas from "./components/ParticleCanvas";
 import Header from "./components/Header";
@@ -31,7 +21,7 @@ function LandingPage() {
         <p className="header-description">
           A decentralized micro-gaming ecosystem designed to be
           self-sustaining for retailers, featuring transparent and
-          oo-chain verified draw.
+          on-chain verified draw.
         </p>
         <div className="wallet-btn">
           <WalletMultiButton
@@ -72,23 +62,15 @@ function ContentWrapper() {
 }
 
 export default function App() {
-  const wallets = [new PhantomWalletAdapter(), new SolflareWalletAdapter()];
-
   return (
     <div className="app">
       <MatrixBackground />
       <ParticleCanvas />
-      <ConnectionProvider endpoint="https://your-custom-rpc.quicknode.com">
-        <WalletProvider wallets={wallets} autoConnect>
-          <WalletModalProvider>
-            <Header />
-            <main>
-              <ContentWrapper />
-            </main>
-            <Footer />
-          </WalletModalProvider>
-        </WalletProvider>
-      </ConnectionProvider>
+      <Header />
+      <main>
+        <ContentWrapper />
+      </main>
+      <Footer />
     </div>
   );
 }
