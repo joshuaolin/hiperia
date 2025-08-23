@@ -31,7 +31,7 @@ function LandingPage() {
         <p className="header-description">
           A decentralized micro-gaming ecosystem designed to be
           self-sustaining for retailers, featuring transparent and
-          open-source verified draw.
+          oo-chain verified draw.
         </p>
         <div className="wallet-btn">
           <WalletMultiButton
