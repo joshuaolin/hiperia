@@ -12,10 +12,11 @@ const games = [
       {
         title: "How to Play",
         items: [
-          "Players select 2 unique digits from 1 to 31 (no duplicates allowed)",
-          "Each ticket costs 0.005 SOL, payable via Solana-compatible wallet",
-          "Draws occur daily at 2:00, 3:00, and 4:00 PM Asia time (UTC+8), using open-source RNG",
-          "Offering three chances to win per ticket",
+          "Players select 2 digits from 1 to 22",
+          "Each ticket costs 0.0072 SOL",
+          "Draws occur daily at 2:00, and 4:00 PM (UTC+8)",
+          "Offering 2 chances to win per ticket",
+          "We use open-source RNG",
           "Check results after daily draw",
           "Winnings automatically credited instantly",
         ],
@@ -23,55 +24,93 @@ const games = [
       {
         title: "Prizes",
         items: [
-          "Match both digits in exact order to win 1.2 SOL",
+          "Match both digits in exact order to win 1 SOL",
           "Prizes automatically credited to player's wallet instantly",
         ],
       },
     ],
   },
+{
+  id: 2,
+  name: "FRUIT GAME [DEC 2025]",
+  description: [
+    {
+      title: "How to Play",
+      items: [
+        "Players pick 3 fruits",
+        "Fruits include 🍑 Peach, 🥭 Mango, 🍎 Apple, 🍌 Banana, 🍒 Cherry, 🍉 Watermelon, 🍍 Pineapple, 🍇 Grapes, 🍓 Strawberry, 🍋 Lemon",
+        "Each ticket costs 0.005 SOL",
+        "Draw occurs daily at 3:00 PM (UTC+8)",
+        "Match order matters – you must match all digits in the correct sequence",
+        "Check results after the daily draw",
+        "Winnings are automatically credited instantly",
+      ],
+    },
+    {
+      title: "Prizes",
+      items: [
+        "Match all 3 fruits in exact order to win 2.5 SOL",
+        "Match the last 2 fruits in exact order to win 0.25 SOL",
+        "Match the first fruit only to win 0.05 SOL",
+      ],
+    },
+  ],
+},
+{
+  id: 3,
+  name: "ALICE IN WONDERLAND [Q1 2026]",
+  description: [
+    {
+      title: "How to Play",
+      items: [
+        "Pick 4 cards in exact order",
+        "Suits include ♥️ Hearts, ♠️ Spades, ♣️ Clubs, ♦️ Diamonds",
+        "Each ticket costs 0.001 SOL",
+        "Draw occurs daily at 5:00 PM (UTC+8)",
+        "Match order matters – all 4 must be in exact sequence to hit the jackpot",
+        "Winnings are automatically credited instantly",
+      ],
+    },
+    {
+      title: "Prizes",
+      items: [
+        "Match all 4 cards in exact order to win 5 SOL",
+        "Match last 3 cards in exact order to win 0.1 SOL",
+        "Match last 2 cards in exact order to win 0.01 SOL",
+      ],
+    },
+  ],
+},
+{
+  id: 4,
+  name: "ASIAN TREASURE [TBA]",
+  description: [
+    {
+      title: "How to Play",
+      items: [
+        "Players select 5 numbers from 1 to 35",
+        "Each ticket costs 0.005 SOL",
+        "Draw occurs daily at 6:00 PM (UTC+8)",
+        "Winning combination is drawn randomly",
+        "Order does not matter – any 5 matching numbers win",
+        "If no winner, the jackpot rolls over and grows for the next draw",
+        "A portion of every ticket sold is added to the pot",
+        "Check results after the daily draw",
+        "Winnings are automatically credited instantly",
+      ],
+    },
+    {
+      title: "Prizes",
+      items: [
+        "Match all 5 numbers to win the Progressive Jackpot Pot",
+        "Jackpot starts at 5 SOL and grows daily until won",
+        "Prizes are credited directly to the player's wallet",
+      ],
+    },
+  ],
+},
   {
-    id: 2,
-    name: "LEMON KICK [DEC 2025]",
-    description: [
-      {
-        title: "How to Play",
-        items: [
-          "Choose a win probability from 5% to 60% (in 5% increments) and predict if the kick goes 'left' or 'right'",
-          "Each ticket costs 0.005, payable via Solana-compatible wallet",
-          "Draws occur instantly using open-source RNG",
-          "Higher win probabilities yield smaller payouts, lower probabilities offer larger payouts",
-          "Check results instantly after the kick",
-        ],
-      },
-      {
-        title: "Prizes",
-        items: [
-          "Payouts vary based on chosen win probability: e.g., 0.095 SOL for 5% win rate, 0.0075 SOL for 60% win rate",
-          "Prizes automatically credited to player's wallet instantly",
-        ],
-      },
-    ],
-  },
-  {
-    id: 3,
-    name: "FRUIT GAME [2026]",
-    description: [
-      {
-        title: "How to Play",
-        items: [
-          "TBA"
-        ],
-      },
-      {
-        title: "Prizes",
-        items: [
-          "TBA"
-        ],
-      },
-    ],
-  },
-  {
-    id: 4,
+    id: 5,
     name: "SUPPORT HIPERIA",
     description: []
   }

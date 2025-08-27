@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "esnext",
+    "moduleResolution": "node16",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["mocha", "chai", "node"],
+    "outDir": "dist"
+  },
+  "include": ["tests", "programs"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -3,7 +3,7 @@ anchor_version = "0.31.1"
 solana_version = "2.3.7"
 
 [programs.devnet]
-hiperia_program = "9bGeMZAaj9Tiw9Qwh9Uv2hh7F56tPCCc5qDTcREsMqJC"
+hiperia_program = "FxYNWgFbQ9qmvtCq4HNAZoYy3EfTyx45aNGeBxsfdg6c"
 
 [registry]
 url = "https://api.apr.dev"

@@ -1,7 +1,7 @@
 {
-  "address": "9bGeMZAaj9Tiw9Qwh9Uv2hh7F56tPCCc5qDTcREsMqJC",
+  "address": "FxYNWgFbQ9qmvtCq4HNAZoYy3EfTyx45aNGeBxsfdg6c",
   "metadata": {
-    "name": "donation_program",
+    "name": "hiperia_program",
     "version": "0.1.0",
     "spec": "0.1.0"
   },
@@ -25,31 +25,11 @@
           "signer": true
         },
         {
-          "name": "vault",
-          "docs": [
-            "vault PDA to hold all donations"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
+          "name": "donation_wallet",
+          "writable": true
         },
         {
           "name": "donation",
-          "docs": [
-            "each user has a single DonationAccount"
-          ],
           "writable": true,
           "pda": {
             "seeds": [
@@ -64,37 +44,6 @@
                   105,
                   111,
                   110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "payer"
-              }
-            ]
-          }
-        },
-        {
-          "name": "leaderboard",
-          "docs": [
-            "per-user leaderboard entry"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  108,
-                  101,
-                  97,
-                  100,
-                  101,
-                  114,
-                  98,
-                  111,
-                  97,
-                  114,
-                  100
                 ]
               },
               {
@@ -130,19 +79,6 @@
         29,
         184
       ]
-    },
-    {
-      "name": "LeaderboardAccount",
-      "discriminator": [
-        247,
-        143,
-        47,
-        149,
-        150,
-        217,
-        93,
-        126
-      ]
     }
   ],
   "errors": [
@@ -154,12 +90,17 @@
     {
       "code": 6001,
       "name": "TooLarge",
-      "msg": "Donation too large (max 1000 SOL)"
+      "msg": "Donation amount exceeds maximum limit (1000 SOL)"
     },
     {
       "code": 6002,
       "name": "InsufficientFunds",
-      "msg": "Insufficient funds"
+      "msg": "Insufficient funds in payer's account"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidDonationWallet",
+      "msg": "Invalid donation wallet address"
     }
   ],
   "types": [
@@ -179,22 +120,6 @@
           {
             "name": "timestamp",
             "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "LeaderboardAccount",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "player",
-            "type": "pubkey"
-          },
-          {
-            "name": "total_donations",
-            "type": "u64"
           }
         ]
       }

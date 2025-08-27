@@ -53,17 +53,6 @@
   100% { transform: translateY(0); opacity: 0.12; }
 }
 
-/* Particle canvas for top donator */
-.particle-canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 0;
-  pointer-events: none;
-}
-
 /* Donation Container */
 .donation-container {
   --section-bg: #080808;
@@ -133,20 +122,18 @@
   text-shadow: 0 0 8px var(--accent-color);
 }
 
-/* Donator Cards */
-.top-donator-card,
-.recent-donator {
+/* Donator Card */
+.latest-donation-card {
   text-align: center;
   position: relative;
   transition: transform 0.3s ease;
 }
 
-.top-donator-card:hover {
+.latest-donation-card:hover {
   transform: perspective(800px) rotateY(5deg) rotateX(5deg);
 }
 
-.top-donator-card-text,
-.recent-donator-text {
+.latest-donation-card-text {
   font-family: "Courier New", monospace;
   font-weight: bold;
   display: flex;
@@ -154,9 +141,6 @@
   align-items: center;
   gap: 0.8rem;
   text-align: center;
-}
-
-.top-donator-card-text {
   font-size: clamp(1.4rem, 2.8vw, 1.6rem);
   border: 3px solid var(--accent-color);
   padding: 1rem;
@@ -195,22 +179,6 @@
   }
 }
 
-.top-donator-badge {
-  font-size: 1.8rem;
-  animation: cosmic-crown 1.8s ease-in-out infinite;
-  transition: transform 0.3s ease;
-}
-
-.top-donator-badge:hover {
-  transform: scale(1.3) rotate(360deg);
-}
-
-@keyframes cosmic-crown {
-  0% { text-shadow: 0 0 7px var(--accent-color); }
-  50% { text-shadow: 0 0 12px var(--accent-color), 0 0 20px var(--hover-accent); }
-  100% { text-shadow: 0 0 7px var(--accent-color); }
-}
-
 .donation-amount {
   text-align: center;
   position: relative;
@@ -228,26 +196,6 @@
   font-size: 0.65em;
   text-align: center;
   animation: symbol-flicker 1.8s ease-in-out infinite;
-}
-
-.recent-donator-text {
-  font-size: clamp(0.85rem, 1.6vw, 1rem);
-  position: relative;
-}
-
-.recent-donator-text::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: radial-gradient(
-    circle,
-    rgba(0, 204, 0, 0.08),
-    transparent
-  );
-  z-index: -1;
 }
 
 .address-link {
@@ -410,56 +358,6 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Leaderboard */
-.leaderboard {
-  overflow-x: auto;
-  margin-block-start: 1rem;
-}
-
-.leaderboard table {
-  width: 100%;
-  border-collapse: collapse;
-  color: var(--text-color);
-}
-
-.leaderboard th,
-.leaderboard td {
-  padding: 0.6rem;
-  border: 1px solid var(--accent-color);
-  text-align: center;
-  font-size: clamp(0.75rem, 1.6vw, 0.9rem);
-  transition: all 0.3s ease;
-  font-family: "Courier New", monospace;
-}
-
-.leaderboard th {
-  background: var(--accent-color);
-  color: var(--bg-color);
-}
-
-.leaderboard tr:nth-child(even) {
-  background: rgba(0, 0, 0, 0.25);
-}
-
-.leaderboard tr:hover {
-  background: rgba(0, 204, 0, 0.15);
-  box-shadow: 0 0 10px var(--accent-color);
-}
-
-.leaderboard-rank1 {
-  border: 2px solid var(--accent-color);
-  font-weight: bold;
-  background: rgba(0, 204, 0, 0.2);
-  box-shadow: 0 0 12px var(--accent-color);
-  animation: nebula-glow 1.5s ease-in-out infinite;
-}
-
-@keyframes nebula-glow {
-  0% { box-shadow: 0 0 12px var(--accent-color); }
-  50% { box-shadow: 0 0 20px var(--accent-color); }
-  100% { box-shadow: 0 0 12px var(--accent-color); }
-}
-
 /* Responsive */
 @media (max-width: 768px) {
   .donation-container {
@@ -470,28 +368,18 @@
   .donation-btn {
     height: 38px;
     font-size: 0.85rem;
-    -webkit-appearance: none; /* Already there */
-    -moz-appearance: textfield; /* Already there */
-    appearance: none; /* Ensure no browser-specific styling */
+    -webkit-appearance: none;
+    -moz-appearance: textfield;
+    appearance: none;
     &::-webkit-inner-spin-button,
     &::-webkit-outer-spin-button {
-    -webkit-appearance: none; /* Remove scroll arrows in WebKit browsers */
-    margin: 0; /* Remove any default margins */
-  }
-  }
-
-  .leaderboard th,
-  .leaderboard td {
-    padding: 0.4rem;
-    font-size: 0.8rem;
+      -webkit-appearance: none;
+      margin: 0;
+    }
   }
 
-  .top-donator-card-text {
+  .latest-donation-card-text {
     font-size: clamp(1.2rem, 2.6vw, 1.4rem);
-  }
-
-  .top-donator-badge {
-    font-size: 1.6rem;
   }
 }
 
@@ -501,7 +389,7 @@
     box-shadow: 0 0 20px rgba(0, 204, 0, 0.6);
   }
 
-  .top-donator-card-text {
+  .latest-donation-card-text {
     border-width: 2px;
   }
 }
@@ -511,11 +399,9 @@
   .matrix-bg,
   .matrix-bg::before,
   .matrix-bg::after,
-  .top-donator-card-text,
+  .latest-donation-card-text,
   .donation-btn,
-  .top-donator-badge,
   .donation-section h2,
-  .leaderboard tr,
   .donation-input::before,
   .cosmic-glitch,
   .cosmic-glitch::after,
@@ -533,11 +419,8 @@
   }
 
   .donation-input,
-  .donation-btn,
-  .leaderboard th,
-  .leaderboard td {
+  .donation-btn {
     border: 2px solid #ffffff;
-    
   }
 
   .address-link,
