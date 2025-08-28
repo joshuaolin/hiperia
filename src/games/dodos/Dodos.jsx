@@ -80,7 +80,7 @@ export default function Lotto({ onBack }) {
     // fake last results for demo
     setLastResults([
       { time: "2:00 PM", numbers: [3, 11], winners: 2 },
-      { time: "3:00 PM", numbers: [7, 15], winners: 0 },
+      { time: "4:00 PM", numbers: [7, 15], winners: 0 },
     ]);
 
     const updateNextDraw = () => setNextDraw(calculateNextDraw());
