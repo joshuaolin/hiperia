@@ -7,6 +7,22 @@ import "../styles/game-carousel.css";
 const games = [
   {
     id: 1,
+    name: "DRAW SCHEDULE",
+    description: [
+      {
+        title: "TIMESLOT (UTC+8)",
+        items: [
+          "2:00 PM = DODOS - INITIAL DRAW",
+          "3:00 PM = FRUIT GAME [DEC 2025]",
+          "4:00 PM = DODOS - FINAL DRAW",
+          "5:00 PM = ALICE IN WONDERLAND[Q1 2026]",
+          "6:00 PM = ASIAN TREASURE [TBA]",
+        ],
+      },
+    ],
+  },
+  {
+    id: 2,
     name: "DODOS [OCT 2025]",
     description: [
       {
@@ -31,7 +47,7 @@ const games = [
     ],
   },
 {
-  id: 2,
+  id: 3,
   name: "FRUIT GAME [DEC 2025]",
   description: [
     {
@@ -41,7 +57,7 @@ const games = [
         "Fruits include 🍑 Peach, 🥭 Mango, 🍎 Apple, 🍌 Banana, 🍒 Cherry, 🍉 Watermelon, 🍍 Pineapple, 🍇 Grapes, 🍓 Strawberry, 🍋 Lemon",
         "Each ticket costs 0.005 SOL",
         "Draw occurs daily at 3:00 PM (UTC+8)",
-        "Match order matters – you must match all digits in the correct sequence",
+        "Match order matters – you must match all fruits in the correct sequence",
         "Check results after the daily draw",
         "Winnings are automatically credited instantly",
       ],
@@ -57,7 +73,7 @@ const games = [
   ],
 },
 {
-  id: 3,
+  id: 4,
   name: "ALICE IN WONDERLAND [Q1 2026]",
   description: [
     {
@@ -82,7 +98,7 @@ const games = [
   ],
 },
 {
-  id: 4,
+  id: 5,
   name: "ASIAN TREASURE [TBA]",
   description: [
     {
@@ -110,7 +126,7 @@ const games = [
   ],
 },
   {
-    id: 5,
+    id: 6,
     name: "SUPPORT HIPERIA",
     description: []
   }

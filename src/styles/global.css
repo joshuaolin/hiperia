@@ -57,6 +57,8 @@ a:visited {
   align-items: center;
   position: relative;
   z-index: 110;
+  margin-top: 4px;
+  margin-bottom: 4px;
 }
 
 .matrix-button, .wallet-btn .wallet-adapter-button {

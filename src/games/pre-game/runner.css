@@ -1,0 +1,135 @@
+/* Matrix Runner Game Styles */
+:root {
+  --accent-color: #00ff41;
+  --hover-accent: #00aaff;
+  --text-color: #ffffff;
+  --section-bg: rgba(0, 0, 0, 0.8);
+}
+
+.runner-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: min(95vw, 500px);
+  margin: 0 auto;
+  padding: 0.25rem;
+  position: relative;
+  z-index: 60;
+  box-sizing: border-box;
+}
+
+.game-area {
+  width: 100%;
+  background: var(--section-bg);
+  border: 2px solid var(--accent-color);
+  border-radius: 0.75rem;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  margin-top: 1rem;
+  box-sizing: border-box;
+}
+
+.matrix-button {
+  margin-top: 0.5rem;
+  width: 100%;
+  max-width: 200px;
+  padding: 0.5rem;
+  font-size: clamp(0.7rem, 2.5vw, 0.9rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(0, 0, 0, 0.8);
+  color: var(--text-color);
+  border: 2px solid var(--accent-color);
+  font-family: "Courier New", Courier, monospace;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  will-change: background-color;
+}
+
+.matrix-button:hover {
+  background: var(--accent-color);
+  color: #000;
+}
+
+.matrix-button:active {
+  transform: scale(0.95);
+}
+
+.back-btn {
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.8);
+  color: var(--text-color);
+  border: 2px solid var(--accent-color);
+  font-family: "Courier New", Courier, monospace;
+  font-size: clamp(0.8rem, 2.5vw, 1rem);
+  padding: 0.4rem 1rem;
+  height: 2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  white-space: nowrap;
+  will-change: background-color;
+}
+
+.back-btn:hover {
+  background: var(--accent-color);
+  color: #000;
+}
+
+.back-btn:active {
+  transform: scale(0.95);
+}
+
+.button-text {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+@keyframes pulse {
+  0% { text-shadow: 0 0 15px var(--accent-color); }
+  50% { text-shadow: 0 0 25px var(--accent-color), 0 0 35px var(--accent-color); }
+  100% { text-shadow: 0 0 15px var(--accent-color); }
+}
+
+@keyframes flash {
+  0% { opacity: 1; }
+  50% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
+@keyframes tumble {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  50% { transform: translateY(100px) rotate(360deg); opacity: 0.8; }
+  100% { transform: translateY(200px) rotate(720deg); opacity: 0; }
+}
+
+@media (min-width: 768px) {
+  .runner-container {
+    max-width: 800px;
+    padding: 0.5rem;
+  }
+
+  .game-area {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    margin-top: 1rem;
+  }
+
+  .back-btn {
+    padding: 0.3rem 0.8rem;
+    font-size: clamp(0.7rem, 2vw, 0.9rem);
+    height: 1.8rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .matrix-button, .back-btn {
+    transition: none;
+    animation: none;
+  }
+}
