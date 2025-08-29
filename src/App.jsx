@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-
 import MatrixBackground from "./components/MatrixBackground";
 import ParticleCanvas from "./components/ParticleCanvas";
 import Header from "./components/Header";
 import GameCarousel from "./components/GameCarousel";
 import Dodos from "./games/dodos/Dodos";
+import FruitGame from "./games/fruit-game/FruitGame";
+import AliceInWonderland from "./games/alice/AliceInWonderland";
 import Footer from "./components/Footer";
 import "./styles/global.css";
 import "./styles/header.css";
@@ -54,6 +55,10 @@ function ContentWrapper() {
         <LandingPage />
       ) : currentView === "Dodos" ? (
         <Dodos onBack={handleBack} />
+      ) : currentView === "FruitGame" ? (
+        <FruitGame onBack={handleBack} />
+      ) : currentView === "AliceInWonderland" ? (
+        <AliceInWonderland onBack={handleBack} />
       ) : (
         <GameCarousel onEnterGame={handleEnterGame} />
       )}

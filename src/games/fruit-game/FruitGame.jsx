@@ -2,11 +2,13 @@ import React, { useState, useEffect, useCallback } from "react";
 import { debounce } from "lodash";
 import { FixedSizeList } from "react-window";
 import { useWallet } from "@solana/wallet-adapter-react";
-import "./dodos.css";
+import "./fruit-game.css";
 
-const TicketCard = React.memo(({ ticket, onCheckResults }) => (
+const fruits = ["🍑", "🥭", "🍎", "🍌", "🍒", "🍍", "🍇", "🍓", "🍋"];
+
+const Ticket = React.memo(({ ticket, onCheckResults }) => (
   <div className="ticket-card">
-    <p className="ticket-numbers">{ticket.numbers.join(" - ")}</p>
+    <p className="ticket-numbers">{ticket.fruits.join(" - ")}</p>
     <p className="ticket-time">Purchased: {ticket.purchaseTime}</p>
     <button
       className="matrix-button check-results-btn"
@@ -28,30 +30,29 @@ const TicketList = ({ tickets, onCheckResults }) => (
   >
     {({ index, style }) => (
       <div style={style}>
-        <TicketCard ticket={tickets[index]} onCheckResults={onCheckResults} />
+        <Ticket ticket={tickets[index]} onCheckResults={onCheckResults} />
       </div>
     )}
   </FixedSizeList>
 );
 
-export default function Dodos({ onBack }) {
+export default function FruitGame({ onBack }) {
   const { connected, connect } = useWallet();
-  const [selectedNumbers, setSelectedNumbers] = useState([]);
+  const [selectedFruits, setSelectedFruits] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [nextDraw, setNextDraw] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [transactionPending, setTransactionPending] = useState(false);
   const [lastResults, setLastResults] = useState([]);
-  const ticketCost = 0.0072;
+  const ticketCost = 0.005;
 
   useEffect(() => {
-    const savedTickets = localStorage.getItem("dodosTickets");
+    const savedTickets = localStorage.getItem("fruitGameTickets");
     if (savedTickets) {
       setTickets(JSON.parse(savedTickets));
     }
     setLastResults([
-      { time: "2:00 PM", numbers: [3, 11], winners: 2 },
-      { time: "4:00 PM", numbers: [7, 15], winners: 0 },
+      { time: "3:00 PM", fruits: ["🍑", "🥭", "🍎"], winners: 1 },
     ]);
   }, []);
 
@@ -60,25 +61,15 @@ export default function Dodos({ onBack }) {
     const asiaTime = new Date(
       now.toLocaleString("en-US", { timeZone: "Asia/Shanghai" })
     );
-    const drawTimes = [14, 16];
-    let nextDrawTime = new Date(asiaTime);
+    const drawHour = 15;
+    let drawTime = new Date(asiaTime);
+    drawTime.setHours(drawHour, 0, 0, 0);
 
-    for (const hour of drawTimes) {
-      const drawTime = new Date(asiaTime);
-      drawTime.setHours(hour, 0, 0, 0);
-      if (drawTime > asiaTime) {
-        nextDrawTime = drawTime;
-        break;
-      }
+    if (drawTime <= asiaTime) {
+      drawTime.setDate(drawTime.getDate() + 1);
     }
 
-    if (nextDrawTime <= asiaTime) {
-      nextDrawTime = new Date(asiaTime);
-      nextDrawTime.setDate(asiaTime.getDate() + 1);
-      nextDrawTime.setHours(drawTimes[0], 0, 0, 0);
-    }
-
-    return nextDrawTime.toLocaleString("en-US", {
+    return drawTime.toLocaleString("en-US", {
       timeZone: "Asia/Shanghai",
       month: "short",
       day: "numeric",
@@ -92,25 +83,15 @@ export default function Dodos({ onBack }) {
     const asiaTime = new Date(
       now.toLocaleString("en-US", { timeZone: "Asia/Shanghai" })
     );
-    const drawTimes = [14, 16];
-    let nextDrawTime = new Date(asiaTime);
+    const drawHour = 15;
+    let drawTime = new Date(asiaTime);
+    drawTime.setHours(drawHour, 0, 0, 0);
 
-    for (const hour of drawTimes) {
-      const drawTime = new Date(asiaTime);
-      drawTime.setHours(hour, 0, 0, 0);
-      if (drawTime > asiaTime) {
-        nextDrawTime = drawTime;
-        break;
-      }
+    if (drawTime <= asiaTime) {
+      drawTime.setDate(drawTime.getDate() + 1);
     }
 
-    if (nextDrawTime <= asiaTime) {
-      nextDrawTime = new Date(asiaTime);
-      nextDrawTime.setDate(asiaTime.getDate() + 1);
-      nextDrawTime.setHours(drawTimes[0], 0, 0, 0);
-    }
-
-    const diff = nextDrawTime - now;
+    const diff = drawTime - now;
     if (diff <= 0) {
       return "Drawing in progress...";
     }
@@ -130,14 +111,14 @@ export default function Dodos({ onBack }) {
     return () => clearInterval(interval);
   }, [calculateNextDrawCountdown]);
 
-  const handleNumberSelect = useCallback(
-    debounce((number) => {
-      setSelectedNumbers((prev) => {
-        if (prev.includes(number)) {
-          return prev.filter((n) => n !== number);
+  const handleFruitSelect = useCallback(
+    debounce((fruit) => {
+      setSelectedFruits((prev) => {
+        if (prev.includes(fruit)) {
+          return prev.filter((f) => f !== fruit);
         }
-        if (prev.length < 2) {
-          return [...prev, number];
+        if (prev.length < 3) {
+          return [...prev, fruit];
         }
         return prev;
       });
@@ -146,25 +127,21 @@ export default function Dodos({ onBack }) {
   );
 
   const clearSelection = () => {
-    setSelectedNumbers([]);
+    setSelectedFruits([]);
   };
 
   const generateRandomSelection = () => {
     clearSelection();
     const newSelection = [];
-    for (let i = 0; i < 2; i++) {
-      const randomNumber = Math.floor(Math.random() * 22) + 1;
-      if (!newSelection.includes(randomNumber)) {
-        newSelection.push(randomNumber);
-      } else {
-        i--;
-      }
+    for (let i = 0; i < 3; i++) {
+      const randomIndex = Math.floor(Math.random() * fruits.length);
+      newSelection.push(fruits[randomIndex]);
     }
-    setSelectedNumbers(newSelection);
+    setSelectedFruits(newSelection);
   };
 
   const purchaseTicket = async () => {
-    if (!connected || selectedNumbers.length !== 2) {
+    if (!connected || selectedFruits.length !== 3) {
       return;
     }
     try {
@@ -172,18 +149,18 @@ export default function Dodos({ onBack }) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
       const newTicket = {
         id: Date.now(),
-        numbers: [...selectedNumbers],
+        fruits: [...selectedFruits],
         purchaseTime: new Date().toLocaleTimeString(),
         drawTime: calculateNextDrawTime(),
       };
       setTickets((prev) => {
         const updated = [...prev, newTicket];
-        localStorage.setItem("dodosTickets", JSON.stringify(updated));
+        localStorage.setItem("fruitGameTickets", JSON.stringify(updated));
         return updated;
       });
-      setSelectedNumbers([]);
+      setSelectedFruits([]);
       setSuccessMessage(
-        `Successfully purchased ticket for ${newTicket.numbers.join(" - ")}!`
+        `Successfully purchased ticket for ${newTicket.fruits.join(" - ")}!`
       );
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
@@ -207,20 +184,35 @@ export default function Dodos({ onBack }) {
 
   const checkResults = useCallback(
     (ticket) => {
-      const winning = lastResults.find((result) =>
-        result.numbers.every((num, i) => num === ticket.numbers[i])
-      );
-      if (winning) {
-        alert(`Congratulations! You won 1 SOL from this ticket!`);
-      } else {
-        alert("No wins for this ticket yet. Better luck next time!");
+      const winning = lastResults[0]?.fruits || [];
+      let prize = 0;
+
+      if (
+        ticket.fruits[0] === winning[0] &&
+        ticket.fruits[1] === winning[1] &&
+        ticket.fruits[2] === winning[2]
+      ) {
+        prize = 2.5;
+      } else if (
+        ticket.fruits[1] === winning[1] &&
+        ticket.fruits[2] === winning[2]
+      ) {
+        prize = 0.25;
+      } else if (ticket.fruits[0] === winning[0]) {
+        prize = 0.05;
       }
+
+      alert(
+        prize > 0
+          ? `Congratulations! You won ${prize} SOL from this ticket!`
+          : "No wins for this ticket yet. Better luck next time!"
+      );
     },
     [lastResults]
   );
 
   return (
-    <div className="dodos-container">
+    <div className="fruit-game-container">
       <div className="wallet-btn back-button-container">
         <button
           className="matrix-button back-btn"
@@ -234,33 +226,33 @@ export default function Dodos({ onBack }) {
       <div className="game-area">
         <div className="game-sections">
           <div className="game-section number-selection-section">
-            <h3>SELECT YOUR NUMBERS</h3>
+            <h3>SELECT YOUR FRUITS</h3>
             <div className="number-grid">
-              {Array.from({ length: 22 }, (_, i) => i + 1).map((number) => (
+              {fruits.map((fruit) => (
                 <button
-                  key={number}
+                  key={fruit}
                   className={`number-btn ${
-                    selectedNumbers.includes(number) ? "selected" : ""
+                    selectedFruits.includes(fruit) ? "selected" : ""
                   }`}
-                  onClick={() => handleNumberSelect(number)}
+                  onClick={() => handleFruitSelect(fruit)}
                   disabled={
-                    selectedNumbers.length === 2 &&
-                    !selectedNumbers.includes(number)
+                    selectedFruits.length === 3 &&
+                    !selectedFruits.includes(fruit)
                   }
-                  aria-label={`Select number ${number}`}
+                  aria-label={`Select ${fruit}`}
                 >
-                  {number}
+                  {fruit}
                 </button>
               ))}
             </div>
 
             <div className="selection-display">
-              {selectedNumbers.length > 0 ? (
+              {selectedFruits.length > 0 ? (
                 <p className="selected-numbers-text">
-                  Selected: {selectedNumbers.join(", ")}
+                  Selected: {selectedFruits.join(", ")}
                 </p>
               ) : (
-                <p className="select-numbers-prompt">Select 2 numbers (1-22)</p>
+                <p className="select-numbers-prompt">Select 3 fruits</p>
               )}
 
               <div className="action-buttons">
@@ -286,7 +278,7 @@ export default function Dodos({ onBack }) {
                 className="matrix-button purchase-btn"
                 onClick={purchaseTicket}
                 disabled={
-                  selectedNumbers.length !== 2 ||
+                  selectedFruits.length !== 3 ||
                   transactionPending ||
                   !connected
                 }
@@ -326,7 +318,7 @@ export default function Dodos({ onBack }) {
               {lastResults.map((result, index) => (
                 <div key={index} className="result-card">
                   <p className="result-time">{result.time}</p>
-                  <p className="result-numbers">{result.numbers.join(" - ")}</p>
+                  <p className="result-numbers">{result.fruits.join(" - ")}</p>
                   <p className="result-winners">
                     {result.winners} winner{result.winners !== 1 ? "s" : ""}
                   </p>

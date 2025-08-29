@@ -2,9 +2,11 @@ import React, { useState, useEffect, useCallback } from "react";
 import { debounce } from "lodash";
 import { FixedSizeList } from "react-window";
 import { useWallet } from "@solana/wallet-adapter-react";
-import "./dodos.css";
+import "./alice-in-wonderland.css";
 
-const TicketCard = React.memo(({ ticket, onCheckResults }) => (
+const numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+const Ticket = React.memo(({ ticket, onCheckResults }) => (
   <div className="ticket-card">
     <p className="ticket-numbers">{ticket.numbers.join(" - ")}</p>
     <p className="ticket-time">Purchased: {ticket.purchaseTime}</p>
@@ -28,30 +30,29 @@ const TicketList = ({ tickets, onCheckResults }) => (
   >
     {({ index, style }) => (
       <div style={style}>
-        <TicketCard ticket={tickets[index]} onCheckResults={onCheckResults} />
+        <Ticket ticket={tickets[index]} onCheckResults={onCheckResults} />
       </div>
     )}
   </FixedSizeList>
 );
 
-export default function Dodos({ onBack }) {
+export default function AliceInWonderland({ onBack }) {
   const { connected, connect } = useWallet();
-  const [selectedNumbers, setSelectedNumbers] = useState([]);
+  const [selectedNumbers, setSelectedNumbers] = useState(["1", "1", "1", "1"]);
   const [tickets, setTickets] = useState([]);
   const [nextDraw, setNextDraw] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [transactionPending, setTransactionPending] = useState(false);
   const [lastResults, setLastResults] = useState([]);
-  const ticketCost = 0.0072;
+  const ticketCost = 0.001;
 
   useEffect(() => {
-    const savedTickets = localStorage.getItem("dodosTickets");
+    const savedTickets = localStorage.getItem("aliceInWonderlandTickets");
     if (savedTickets) {
       setTickets(JSON.parse(savedTickets));
     }
     setLastResults([
-      { time: "2:00 PM", numbers: [3, 11], winners: 2 },
-      { time: "4:00 PM", numbers: [7, 15], winners: 0 },
+      { time: "5:00 PM", numbers: ["3", "5", "7", "9"], winners: 1 },
     ]);
   }, []);
 
@@ -60,25 +61,15 @@ export default function Dodos({ onBack }) {
     const asiaTime = new Date(
       now.toLocaleString("en-US", { timeZone: "Asia/Shanghai" })
     );
-    const drawTimes = [14, 16];
-    let nextDrawTime = new Date(asiaTime);
+    const drawHour = 17;
+    let drawTime = new Date(asiaTime);
+    drawTime.setHours(drawHour, 0, 0, 0);
 
-    for (const hour of drawTimes) {
-      const drawTime = new Date(asiaTime);
-      drawTime.setHours(hour, 0, 0, 0);
-      if (drawTime > asiaTime) {
-        nextDrawTime = drawTime;
-        break;
-      }
+    if (drawTime <= asiaTime) {
+      drawTime.setDate(drawTime.getDate() + 1);
     }
 
-    if (nextDrawTime <= asiaTime) {
-      nextDrawTime = new Date(asiaTime);
-      nextDrawTime.setDate(asiaTime.getDate() + 1);
-      nextDrawTime.setHours(drawTimes[0], 0, 0, 0);
-    }
-
-    return nextDrawTime.toLocaleString("en-US", {
+    return drawTime.toLocaleString("en-US", {
       timeZone: "Asia/Shanghai",
       month: "short",
       day: "numeric",
@@ -92,25 +83,15 @@ export default function Dodos({ onBack }) {
     const asiaTime = new Date(
       now.toLocaleString("en-US", { timeZone: "Asia/Shanghai" })
     );
-    const drawTimes = [14, 16];
-    let nextDrawTime = new Date(asiaTime);
+    const drawHour = 17;
+    let drawTime = new Date(asiaTime);
+    drawTime.setHours(drawHour, 0, 0, 0);
 
-    for (const hour of drawTimes) {
-      const drawTime = new Date(asiaTime);
-      drawTime.setHours(hour, 0, 0, 0);
-      if (drawTime > asiaTime) {
-        nextDrawTime = drawTime;
-        break;
-      }
+    if (drawTime <= asiaTime) {
+      drawTime.setDate(drawTime.getDate() + 1);
     }
 
-    if (nextDrawTime <= asiaTime) {
-      nextDrawTime = new Date(asiaTime);
-      nextDrawTime.setDate(asiaTime.getDate() + 1);
-      nextDrawTime.setHours(drawTimes[0], 0, 0, 0);
-    }
-
-    const diff = nextDrawTime - now;
+    const diff = drawTime - now;
     if (diff <= 0) {
       return "Drawing in progress...";
     }
@@ -131,40 +112,31 @@ export default function Dodos({ onBack }) {
   }, [calculateNextDrawCountdown]);
 
   const handleNumberSelect = useCallback(
-    debounce((number) => {
+    debounce((index, value) => {
       setSelectedNumbers((prev) => {
-        if (prev.includes(number)) {
-          return prev.filter((n) => n !== number);
-        }
-        if (prev.length < 2) {
-          return [...prev, number];
-        }
-        return prev;
+        const newNumbers = [...prev];
+        newNumbers[index] = value;
+        return newNumbers;
       });
     }, 100),
     []
   );
 
   const clearSelection = () => {
-    setSelectedNumbers([]);
+    setSelectedNumbers(["1", "1", "1", "1"]);
   };
 
   const generateRandomSelection = () => {
-    clearSelection();
     const newSelection = [];
-    for (let i = 0; i < 2; i++) {
-      const randomNumber = Math.floor(Math.random() * 22) + 1;
-      if (!newSelection.includes(randomNumber)) {
-        newSelection.push(randomNumber);
-      } else {
-        i--;
-      }
+    for (let i = 0; i < 4; i++) {
+      const randomIndex = Math.floor(Math.random() * numbers.length);
+      newSelection.push(numbers[randomIndex]);
     }
     setSelectedNumbers(newSelection);
   };
 
   const purchaseTicket = async () => {
-    if (!connected || selectedNumbers.length !== 2) {
+    if (!connected) {
       return;
     }
     try {
@@ -178,10 +150,10 @@ export default function Dodos({ onBack }) {
       };
       setTickets((prev) => {
         const updated = [...prev, newTicket];
-        localStorage.setItem("dodosTickets", JSON.stringify(updated));
+        localStorage.setItem("aliceInWonderlandTickets", JSON.stringify(updated));
         return updated;
       });
-      setSelectedNumbers([]);
+      setSelectedNumbers(["1", "1", "1", "1"]);
       setSuccessMessage(
         `Successfully purchased ticket for ${newTicket.numbers.join(" - ")}!`
       );
@@ -207,20 +179,40 @@ export default function Dodos({ onBack }) {
 
   const checkResults = useCallback(
     (ticket) => {
-      const winning = lastResults.find((result) =>
-        result.numbers.every((num, i) => num === ticket.numbers[i])
-      );
-      if (winning) {
-        alert(`Congratulations! You won 1 SOL from this ticket!`);
-      } else {
-        alert("No wins for this ticket yet. Better luck next time!");
+      const winning = lastResults[0]?.numbers || [];
+      let prize = 0;
+
+      if (
+        ticket.numbers[0] === winning[0] &&
+        ticket.numbers[1] === winning[1] &&
+        ticket.numbers[2] === winning[2] &&
+        ticket.numbers[3] === winning[3]
+      ) {
+        prize = 5;
+      } else if (
+        ticket.numbers[1] === winning[1] &&
+        ticket.numbers[2] === winning[2] &&
+        ticket.numbers[3] === winning[3]
+      ) {
+        prize = 0.1;
+      } else if (
+        ticket.numbers[2] === winning[2] &&
+        ticket.numbers[3] === winning[3]
+      ) {
+        prize = 0.01;
       }
+
+      alert(
+        prize > 0
+          ? `Congratulations! You won ${prize} SOL from this ticket!`
+          : "No wins for this ticket yet. Better luck next time!"
+      );
     },
     [lastResults]
   );
 
   return (
-    <div className="dodos-container">
+    <div className="alice-game-container">
       <div className="wallet-btn back-button-container">
         <button
           className="matrix-button back-btn"
@@ -235,33 +227,47 @@ export default function Dodos({ onBack }) {
         <div className="game-sections">
           <div className="game-section number-selection-section">
             <h3>SELECT YOUR NUMBERS</h3>
-            <div className="number-grid">
-              {Array.from({ length: 22 }, (_, i) => i + 1).map((number) => (
-                <button
-                  key={number}
-                  className={`number-btn ${
-                    selectedNumbers.includes(number) ? "selected" : ""
-                  }`}
-                  onClick={() => handleNumberSelect(number)}
-                  disabled={
-                    selectedNumbers.length === 2 &&
-                    !selectedNumbers.includes(number)
-                  }
-                  aria-label={`Select number ${number}`}
-                >
-                  {number}
-                </button>
+            <div className="number-scrollers">
+              {selectedNumbers.map((number, index) => (
+                <div key={index} className="scroller-container">
+                  <button
+                    className="scroll-btn up-btn"
+                    onClick={() =>
+                      handleNumberSelect(
+                        index,
+                        numbers[
+                          (numbers.indexOf(number) - 1 + numbers.length) %
+                            numbers.length
+                        ]
+                      )
+                    }
+                    aria-label={`Increase number for slot ${index + 1}`}
+                  >
+                    ↑
+                  </button>
+                  <div className="number-display">{number}</div>
+                  <button
+                    className="scroll-btn down-btn"
+                    onClick={() =>
+                      handleNumberSelect(
+                        index,
+                        numbers[
+                          (numbers.indexOf(number) + 1) % numbers.length
+                        ]
+                      )
+                    }
+                    aria-label={`Decrease number for slot ${index + 1}`}
+                  >
+                    ↓
+                  </button>
+                </div>
               ))}
             </div>
 
             <div className="selection-display">
-              {selectedNumbers.length > 0 ? (
-                <p className="selected-numbers-text">
-                  Selected: {selectedNumbers.join(", ")}
-                </p>
-              ) : (
-                <p className="select-numbers-prompt">Select 2 numbers (1-22)</p>
-              )}
+              <p className="selected-numbers-text">
+                Selected: {selectedNumbers.join(", ")}
+              </p>
 
               <div className="action-buttons">
                 <button className="matrix-button" onClick={clearSelection}>
@@ -285,11 +291,7 @@ export default function Dodos({ onBack }) {
               <button
                 className="matrix-button purchase-btn"
                 onClick={purchaseTicket}
-                disabled={
-                  selectedNumbers.length !== 2 ||
-                  transactionPending ||
-                  !connected
-                }
+                disabled={transactionPending || !connected}
                 aria-label={`Purchase ticket for ${ticketCost} SOL`}
               >
                 <span className="button-text">

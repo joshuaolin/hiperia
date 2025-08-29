@@ -12,10 +12,10 @@ const games = [
       {
         title: "TIMESLOT (UTC+8)",
         items: [
-          "2:00 PM = DODOS - INITIAL DRAW",
+          "2:00 PM = DODOS - INITIAL DRAW [NOV 2025]",
           "3:00 PM = FRUIT GAME [DEC 2025]",
-          "4:00 PM = DODOS - FINAL DRAW",
-          "5:00 PM = ALICE IN WONDERLAND[Q1 2026]",
+          "4:00 PM = DODOS - FINAL DRAW [NOV 2025]",
+          "5:00 PM = ALICE IN WONDERLAND [JAN 2026]",
           "6:00 PM = ASIAN TREASURE [TBA]",
         ],
       },
@@ -23,16 +23,15 @@ const games = [
   },
   {
     id: 2,
-    name: "DODOS [OCT 2025]",
+    name: "DODOS",
     description: [
       {
         title: "How to Play",
         items: [
           "Players select 2 digits from 1 to 22",
           "Each ticket costs 0.0072 SOL",
-          "Draws occur daily at 2:00, and 4:00 PM (UTC+8)",
+          "Draws occur daily at 2:00, and 4:00 PM",
           "Offering 2 chances to win per ticket",
-          "We use open-source RNG",
           "Check results after daily draw",
           "Winnings automatically credited instantly",
         ],
@@ -41,95 +40,93 @@ const games = [
         title: "Prizes",
         items: [
           "Match both digits in exact order to win 1 SOL",
-          "Prizes automatically credited to player's wallet instantly",
+          "Match both digits in any order to win 0.01 SOL",
         ],
       },
     ],
   },
-{
-  id: 3,
-  name: "FRUIT GAME [DEC 2025]",
-  description: [
-    {
-      title: "How to Play",
-      items: [
-        "Players pick 3 fruits",
-        "Fruits include 🍑 Peach, 🥭 Mango, 🍎 Apple, 🍌 Banana, 🍒 Cherry, 🍉 Watermelon, 🍍 Pineapple, 🍇 Grapes, 🍓 Strawberry, 🍋 Lemon",
-        "Each ticket costs 0.005 SOL",
-        "Draw occurs daily at 3:00 PM (UTC+8)",
-        "Match order matters – you must match all fruits in the correct sequence",
-        "Check results after the daily draw",
-        "Winnings are automatically credited instantly",
-      ],
-    },
-    {
-      title: "Prizes",
-      items: [
-        "Match all 3 fruits in exact order to win 2.5 SOL",
-        "Match the last 2 fruits in exact order to win 0.25 SOL",
-        "Match the first fruit only to win 0.05 SOL",
-      ],
-    },
-  ],
-},
-{
-  id: 4,
-  name: "ALICE IN WONDERLAND [Q1 2026]",
-  description: [
-    {
-      title: "How to Play",
-      items: [
-        "Pick 4 cards in exact order",
-        "Suits include ♥️ Hearts, ♠️ Spades, ♣️ Clubs, ♦️ Diamonds",
-        "Each ticket costs 0.001 SOL",
-        "Draw occurs daily at 5:00 PM (UTC+8)",
-        "Match order matters – all 4 must be in exact sequence to hit the jackpot",
-        "Winnings are automatically credited instantly",
-      ],
-    },
-    {
-      title: "Prizes",
-      items: [
-        "Match all 4 cards in exact order to win 5 SOL",
-        "Match last 3 cards in exact order to win 0.1 SOL",
-        "Match last 2 cards in exact order to win 0.01 SOL",
-      ],
-    },
-  ],
-},
-{
-  id: 5,
-  name: "ASIAN TREASURE [TBA]",
-  description: [
-    {
-      title: "How to Play",
-      items: [
-        "Players select 5 numbers from 1 to 35",
-        "Each ticket costs 0.005 SOL",
-        "Draw occurs daily at 6:00 PM (UTC+8)",
-        "Winning combination is drawn randomly",
-        "Order does not matter – any 5 matching numbers win",
-        "If no winner, the jackpot rolls over and grows for the next draw",
-        "A portion of every ticket sold is added to the pot",
-        "Check results after the daily draw",
-        "Winnings are automatically credited instantly",
-      ],
-    },
-    {
-      title: "Prizes",
-      items: [
-        "Match all 5 numbers to win the Progressive Jackpot Pot",
-        "Jackpot starts at 5 SOL and grows daily until won",
-        "Prizes are credited directly to the player's wallet",
-      ],
-    },
-  ],
-},
+  {
+    id: 3,
+    name: "FRUIT GAME",
+    description: [
+      {
+        title: "How to Play",
+        items: [
+          "Players pick 3 fruits",
+          "Fruits include 🍑 Peach, 🥭 Mango, 🍎 Apple, 🍌 Banana, 🍒 Cherry, 🍍 Pineapple, 🍇 Grapes, 🍓 Strawberry, 🍋 Lemon",
+          "Each ticket costs 0.005 SOL",
+          "Draw occurs daily at 3:00 PM",
+          "Match order matters – you must match all fruits in the correct sequence",
+          "Check results after the daily draw",
+          "Winnings are automatically credited instantly",
+        ],
+      },
+      {
+        title: "Prizes",
+        items: [
+          "Match all 3 fruits in exact order to win 2.5 SOL",
+          "Match the last 2 fruits in exact order to win 0.25 SOL",
+          "Match the first fruit only to win 0.05 SOL",
+        ],
+      },
+    ],
+  },
+  {
+    id: 4,
+    name: "ALICE IN WONDERLAND",
+    description: [
+      {
+        title: "How to Play",
+        items: [
+          "Players select 4 numbers from 1 to 9",
+          "Each ticket costs 0.001 SOL",
+          "Draw occurs daily at 5:00 PM",
+          "Match order matters – all 4 must be in exact sequence to hit the jackpot",
+          "Winnings are automatically credited instantly",
+        ],
+      },
+      {
+        title: "Prizes",
+        items: [
+          "Match all 4 numbers in exact order to win 5 SOL",
+          "Match last 3 numbers in exact order to win 0.1 SOL",
+          "Match last 2 numbers in exact order to win 0.01 SOL",
+        ],
+      },
+    ],
+  },
+  {
+    id: 5,
+    name: "ASIAN TREASURE [TBA]",
+    description: [
+      {
+        title: "How to Play",
+        items: [
+          "Players select 5 numbers from 1 to 35",
+          "Each ticket costs 0.005 SOL",
+          "Draw occurs daily at 6:00 PM",
+          "Winning combination is drawn randomly",
+          "Order does not matter – any 5 matching numbers win",
+          "If no winner, the jackpot rolls over and grows for the next draw",
+          "A portion of every ticket sold is added to the pot",
+          "Check results after the daily draw",
+          "Winnings are automatically credited instantly",
+        ],
+      },
+      {
+        title: "Prizes",
+        items: [
+          "Match all 5 numbers to win the Progressive Jackpot Pot",
+          "Jackpot starts at 5 SOL and grows daily until won",
+        ],
+      },
+    ],
+  },
   {
     id: 6,
     name: "SUPPORT HIPERIA",
-    description: []
-  }
+    description: [],
+  },
 ];
 
 export default function GameCarousel({ onEnterGame }) {
@@ -179,6 +176,30 @@ export default function GameCarousel({ onEnterGame }) {
                 className="matrix-button"
                 onClick={() => onEnterGame("Dodos")}
                 aria-label="Enter DODOS Game"
+              >
+                ENTER GAME
+              </button>
+            </div>
+          )}
+
+          {games[current].name.includes("FRUIT GAME") && (
+            <div className="wallet-btn">
+              <button
+                className="matrix-button"
+                onClick={() => onEnterGame("FruitGame")}
+                aria-label="Enter Fruit Game"
+              >
+                ENTER GAME
+              </button>
+            </div>
+          )}
+
+          {games[current].name.includes("ALICE IN WONDERLAND") && (
+            <div className="wallet-btn">
+              <button
+                className="matrix-button"
+                onClick={() => onEnterGame("AliceInWonderland")}
+                aria-label="Enter Alice in Wonderland Game"
               >
                 ENTER GAME
               </button>

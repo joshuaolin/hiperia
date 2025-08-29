@@ -1,0 +1,383 @@
+@import "@solana/wallet-adapter-react-ui/styles.css";
+
+.alice-game-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: min(95vw, 360px);
+  margin: 0 auto;
+  padding: 0.25rem;
+  position: relative;
+  z-index: 60;
+  box-sizing: border-box;
+}
+
+.game-area {
+  width: 100%;
+  background: var(--section-bg);
+  border: 2px solid var(--accent-color);
+  border-radius: 0.75rem;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  margin-top: 1rem;
+  box-sizing: border-box;
+}
+
+.game-sections {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.game-section {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--accent-color);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  box-sizing: border-box;
+}
+
+.game-section h3 {
+  font-family: "Courier New", Courier, monospace;
+  color: var(--hover-accent);
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--accent-color);
+  padding-bottom: 0.25rem;
+  font-size: clamp(0.9rem, 2.5vw, 1.1rem);
+}
+
+.number-scrollers {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  justify-content: center;
+}
+
+.scroller-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 60px;
+}
+
+.number-display {
+  width: 100%;
+  height: 60px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 2px solid var(--accent-color);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Orbitron", monospace;
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  color: var(--hover-accent);
+  margin: 0.3rem 0;
+}
+
+.scroll-btn {
+  width: 100%;
+  height: 30px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid var(--accent-color);
+  border-radius: 4px;
+  color: var(--text-color);
+  font-family: "Courier New", Courier, monospace;
+  font-size: clamp(0.8rem, 2.5vw, 1rem);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.scroll-btn:hover {
+  background: var(--accent-color);
+  color: #000;
+}
+
+.scroll-btn:active {
+  transform: scale(0.95);
+}
+
+.selection-display {
+  text-align: center;
+  margin-top: 0.5rem;
+}
+
+.selected-numbers-text,
+.select-numbers-prompt {
+  font-size: clamp(0.8rem, 2.5vw, 1rem);
+  margin: 0.3rem 0;
+}
+
+.matrix-button {
+  margin-top: 0.5rem;
+  width: 100%;
+  padding: 0.5rem;
+  font-size: clamp(0.7rem, 2.5vw, 0.9rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(0, 0, 0, 0.8);
+  color: var(--text-color);
+  border: 2px solid var(--accent-color);
+  font-family: "Courier New", Courier, monospace;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  will-change: background-color;
+}
+
+.matrix-button:hover {
+  background: var(--accent-color);
+  color: #000;
+}
+
+.matrix-button:active {
+  transform: scale(0.95);
+}
+
+.back-btn {
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.8);
+  color: var(--text-color);
+  border: 2px solid var(--accent-color);
+  font-family: "Courier New", Courier, monospace;
+  font-size: clamp(0.8rem, 2.5vw, 1rem);
+  padding: 0.4rem 1rem;
+  height: 2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  white-space: nowrap;
+  will-change: background-color;
+}
+
+.back-btn:hover {
+  background: var(--accent-color);
+  color: #000;
+}
+
+.back-btn:active {
+  transform: scale(0.95);
+}
+
+.button-text {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.success-message {
+  color: var(--hover-accent);
+  margin-top: 0.3rem;
+  font-size: clamp(0.7rem, 2vw, 0.9rem);
+}
+
+.wallet-notice {
+  background: rgba(255, 69, 0, 0.2);
+  border: 1px solid #ff4500;
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  text-align: center;
+  margin-top: 0.3rem;
+  font-size: clamp(0.7rem, 2vw, 0.9rem);
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+
+.result-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--accent-color);
+  border-radius: 0.25rem;
+  padding: 0.3rem;
+  text-align: center;
+}
+
+.result-time {
+  font-weight: bold;
+  margin: 0;
+  font-size: clamp(0.7rem, 2vw, 0.9rem);
+}
+
+.result-numbers {
+  font-family: "Orbitron", monospace;
+  color: var(--hover-accent);
+  margin: 0.3rem 0;
+  font-size: clamp(0.9rem, 2.5vw, 1.1rem);
+}
+
+.result-winners {
+  margin: 0;
+  font-size: clamp(0.6rem, 2vw, 0.8rem);
+}
+
+.next-draw {
+  font-family: "Orbitron", monospace;
+  color: var(--hover-accent);
+  text-align: center;
+  font-size: clamp(0.8rem, 2.5vw, 1rem);
+}
+
+.tickets-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+
+.ticket-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--accent-color);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  text-align: center;
+}
+
+.ticket-numbers {
+  font-family: "Orbitron", monospace;
+  color: var(--hover-accent);
+  margin: 0 0 0.3rem;
+  font-size: clamp(0.9rem, 2.5vw, 1.1rem);
+}
+
+.ticket-time {
+  font-size: clamp(0.6rem, 2vw, 0.8rem);
+  margin-bottom: 0.5rem;
+}
+
+.check-results-btn {
+  width: 100%;
+  padding: 0.3rem;
+}
+
+.loading-spinner {
+  text-align: center;
+  padding: 0.5rem;
+  color: var(--hover-accent);
+  font-size: clamp(0.7rem, 2vw, 0.9rem);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.info-box {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: clamp(0.8rem, 2vw, 1rem);
+  font-family: "Courier New", Courier, monospace;
+  color: var(--text-color);
+}
+
+.purchase-btn {
+  background: linear-gradient(45deg, var(--accent-color), #ff4081);
+}
+
+@media (min-width: 768px) {
+  .alice-game-container {
+    max-width: 800px;
+    padding: 0.5rem;
+  }
+
+  .game-area {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    margin-top: 1rem;
+  }
+
+  .game-sections {
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .number-scrollers {
+    gap: 1rem;
+  }
+
+  .scroller-container {
+    width: 80px;
+  }
+
+  .number-display {
+    height: 80px;
+    font-size: clamp(2rem, 5vw, 2.5rem);
+  }
+
+  .scroll-btn {
+    height: 35px;
+  }
+
+  .results-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tickets-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+
+  .back-btn {
+    padding: 0.3rem 0.8rem;
+    font-size: clamp(0.7rem, 2vw, 0.9rem);
+    height: 1.8rem;
+  }
+}
+
+@media (min-width: 576px) and (max-width: 767px) and (orientation: landscape) {
+  .game-sections {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .number-scrollers {
+    gap: 0.3rem;
+  }
+
+  .scroller-container {
+    width: 50px;
+  }
+
+  .number-display {
+    height: 50px;
+    font-size: clamp(1.2rem, 3vw, 1.5rem);
+  }
+
+  .scroll-btn {
+    height: 25px;
+    font-size: clamp(0.7rem, 2vw, 0.9rem);
+  }
+}
+
+@media (max-width: 360px) {
+  .game-section {
+    padding: 0.3rem;
+  }
+
+  .matrix-button {
+    padding: 0.3rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-btn, .matrix-button, .check-results-btn, .back-btn {
+    transition: none;
+    animation: none;
+  }
+}
