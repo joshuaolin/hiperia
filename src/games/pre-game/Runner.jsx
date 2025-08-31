@@ -138,7 +138,7 @@ export default function Runner({ onBack }) {
       slideTimer: 0,
       flyTimer: 0,
       frameCount: 0,
-      vulnerableTimer: 0, // Added for vulnerability period
+      vulnerableTimer: 0,
 
       // objs
       obstacles: [],
@@ -298,7 +298,7 @@ export default function Runner({ onBack }) {
       g.dosY = g.groundY - g.dosHeight - 100;
       if (g.flyTimer <= 0) {
         g.isFlying = false;
-        g.dosY = g.groundY - g.dosHeight;
+        g.dosY = G.current.groundY - G.current.dosHeight;
         // Set vulnerability period after landing from flight
         g.vulnerableTimer = 1000; // 1 second vulnerability
         showPowerupNotification("Fly mode ended! Vulnerable for 1s");
@@ -959,16 +959,6 @@ export default function Runner({ onBack }) {
 
   return (
     <div className="mr-body">
-      <div className="back-button-container">
-        <button
-          className="matrix-button back-btn"
-          onClick={onBack}
-          aria-label="Back to Game Carousel"
-        >
-          <span className="button-text">BACK TO GAMES</span>
-        </button>
-      </div>
-      
       <div className="mr-game-container" id="game-container" ref={containerRef}>
         <canvas id="game-canvas" ref={canvasRef} />
 
@@ -989,9 +979,10 @@ export default function Runner({ onBack }) {
           <p>Control <strong>Dos</strong> to dodge obstacles in the Matrix</p>
           <div className="instructions">
             <p>• Tap: Jump (Dodge low lasers)</p>
-            <p>• Double-tap: Slide (Dodge bullets)</p>
             <p>• Collect power-ups for special abilities!</p>
-            <p>• ❤️ Extra life  • 👻 Invisibility (2 obstacles)  • 🪽 Fly (2s)</p>
+            <p>• ❤️ Extra life</p>
+            <p>• 👻 Invisibility (2 obstacles)</p>
+            <p>• 🪽 Fly (2s)</p>
           </div>
           <button className="btn" onClick={startGame}>START</button>
         </div>
