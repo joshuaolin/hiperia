@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { debounce } from "lodash";
 import { FixedSizeList } from "react-window";
 import { useWallet } from "@solana/wallet-adapter-react";
 import "./fruit-game.css";
@@ -111,20 +110,19 @@ export default function FruitGame({ onBack }) {
     return () => clearInterval(interval);
   }, [calculateNextDrawCountdown]);
 
-  const handleFruitSelect = useCallback(
-    debounce((fruit) => {
-      setSelectedFruits((prev) => {
-        if (prev.includes(fruit)) {
-          return prev.filter((f) => f !== fruit);
-        }
-        if (prev.length < 3) {
-          return [...prev, fruit];
-        }
-        return prev;
-      });
-    }, 100),
-    []
-  );
+  const handleFruitSelect = useCallback((fruit) => {
+    setSelectedFruits((prev) => {
+      // If less than 3 fruits, add the clicked fruit (allows duplicates)
+      if (prev.length < 3) {
+        return [...prev, fruit];
+      }
+      // If already 3 fruits, replace the last one with the clicked fruit
+      const newSelection = [...prev];
+      newSelection.pop(); // Remove last fruit
+      newSelection.push(fruit); // Add new fruit
+      return newSelection;
+    });
+  }, []);
 
   const clearSelection = () => {
     setSelectedFruits([]);
@@ -135,7 +133,7 @@ export default function FruitGame({ onBack }) {
     const newSelection = [];
     for (let i = 0; i < 3; i++) {
       const randomIndex = Math.floor(Math.random() * fruits.length);
-      newSelection.push(fruits[randomIndex]);
+      newSelection.push(fruits[randomIndex]); // Allow duplicates
     }
     setSelectedFruits(newSelection);
   };
@@ -235,10 +233,7 @@ export default function FruitGame({ onBack }) {
                     selectedFruits.includes(fruit) ? "selected" : ""
                   }`}
                   onClick={() => handleFruitSelect(fruit)}
-                  disabled={
-                    selectedFruits.length === 3 &&
-                    !selectedFruits.includes(fruit)
-                  }
+                  disabled={selectedFruits.length >= 3 && !selectedFruits.includes(fruit)}
                   aria-label={`Select ${fruit}`}
                 >
                   {fruit}

@@ -36,7 +36,7 @@ const TicketList = ({ tickets, onCheckResults }) => (
   </FixedSizeList>
 );
 
-export default function AliceInWonderland({ onBack }) {
+export default function FourD({ onBack }) {
   const { connected, connect } = useWallet();
   const [selectedNumbers, setSelectedNumbers] = useState(["1", "1", "1", "1"]);
   const [tickets, setTickets] = useState([]);

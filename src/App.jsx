@@ -8,6 +8,7 @@ import GameCarousel from "./components/GameCarousel";
 import Dodos from "./games/dodos/Dodos";
 import FruitGame from "./games/fruit-game/FruitGame";
 import AliceInWonderland from "./games/alice/AliceInWonderland";
+import Runner from "./games/pre-game/Runner";
 import Footer from "./components/Footer";
 import "./styles/global.css";
 import "./styles/header.css";
@@ -53,6 +54,8 @@ function ContentWrapper() {
     <>
       {!connected ? (
         <LandingPage />
+      ) : currentView === "Runner" ? (
+        <Runner onBack={handleBack} />
       ) : currentView === "Dodos" ? (
         <Dodos onBack={handleBack} />
       ) : currentView === "FruitGame" ? (

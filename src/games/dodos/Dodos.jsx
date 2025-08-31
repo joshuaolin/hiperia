@@ -134,10 +134,10 @@ export default function Dodos({ onBack }) {
     debounce((number) => {
       setSelectedNumbers((prev) => {
         if (prev.includes(number)) {
-          return prev.filter((n) => n !== number);
+          return prev.filter((n) => n !== number); // Allow deselect
         }
-        if (prev.length < 2) {
-          return [...prev, number];
+        if (prev.length < 2 && !prev.includes(number)) {
+          return [...prev, number]; // Prevent duplicates
         }
         return prev;
       });
@@ -153,12 +153,11 @@ export default function Dodos({ onBack }) {
     clearSelection();
     const newSelection = [];
     for (let i = 0; i < 2; i++) {
-      const randomNumber = Math.floor(Math.random() * 22) + 1;
-      if (!newSelection.includes(randomNumber)) {
-        newSelection.push(randomNumber);
-      } else {
-        i--;
-      }
+      let randomNumber;
+      do {
+        randomNumber = Math.floor(Math.random() * 22) + 1;
+      } while (newSelection.includes(randomNumber)); // Ensure no duplicates
+      newSelection.push(randomNumber);
     }
     setSelectedNumbers(newSelection);
   };

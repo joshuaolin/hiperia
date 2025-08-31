@@ -1,13 +1,62 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { useSwipeable } from "react-swipeable";
-import DonationContainer from "./DonationContainer";
 import "../styles/game-carousel.css";
 
+/** —— config —— **/
+const WALLET_ADDRESS = "Ghxn7ree6MFQxC8hFTJ8Lo319xEZzqVFLcmDLKVFpPaa";
+
+/** —— small, self-contained copy component —— **/
+function CopyWalletRow({ address = WALLET_ADDRESS }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(address.trim());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // fallback
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = address.trim();
+        ta.setAttribute("readonly", "");
+        ta.style.position = "absolute";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1400);
+      } catch {}
+    }
+  };
+
+  return (
+    <div className="copy-wallet-row" role="group" aria-label="wallet address">
+      <div className="copy-wallet-text" title="wallet address">
+        {address}
+      </div>
+      <button
+        type="button"
+        className="copy-wallet-btn"
+        onClick={handleCopy}
+        aria-live="polite"
+        aria-label="copy wallet address"
+      >
+        <span className="copy-icon" aria-hidden="true">{copied ? "✅" : "📋"}</span>
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+/** —— data —— **/
 const games = [
   {
     id: 1,
-    name: "DRAW SCHEDULE",
+    name: "ANNOUNCEMENT",
     description: [
       {
         title: "TIMESLOT (UTC+8)",
@@ -17,6 +66,23 @@ const games = [
           "4:00 PM = DODOS - FINAL DRAW [NOV 2025]",
           "5:00 PM = ALICE IN WONDERLAND [JAN 2026]",
           "6:00 PM = ASIAN TREASURE [TBA]",
+        ],
+      },
+      {
+        title: "SUPPORT HIPERIA",
+        items: [
+          "Funds will go directly into future development, community rewards, and ongoing improvements.",
+          "Solana address:",
+          WALLET_ADDRESS,
+          "Supporters may receive eligibility for upcoming airdrop.*",
+        ],
+      },
+      {
+        title: "MINI GAME",
+        items: [
+          "Control Dos to dodge obstacles",
+          "Tap to Jump",
+          "Collect power-ups for special abilities"
         ],
       },
     ],
@@ -73,7 +139,7 @@ const games = [
   },
   {
     id: 4,
-    name: "ALICE IN WONDERLAND",
+    name: "4D",
     description: [
       {
         title: "How to Play",
@@ -122,11 +188,6 @@ const games = [
       },
     ],
   },
-  {
-    id: 6,
-    name: "SUPPORT HIPERIA",
-    description: [],
-  },
 ];
 
 export default function GameCarousel({ onEnterGame }) {
@@ -158,17 +219,49 @@ export default function GameCarousel({ onEnterGame }) {
           </h2>
 
           <div className="game-description">
-            {games[current].description.map((section, sectionIndex) => (
-              <div key={sectionIndex} className="description-section">
-                <h3 className="section-title">{section.title}:</h3>
-                <ul className="bullet-list">
-                  {section.items.map((item, itemIndex) => (
-                    <li key={itemIndex}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+            {games[current].description.map((section, sectionIndex) => {
+              const isSupportSection =
+                typeof section.title === "string" &&
+                section.title.toLowerCase().includes("support hiperia");
+
+              return (
+                <div key={sectionIndex} className="description-section">
+                  <h3 className="section-title">{section.title}:</h3>
+                  <ul className="bullet-list">
+                    {section.items.map((item, itemIndex) => {
+                      const isWalletLine =
+                        typeof item === "string" &&
+                        item.trim() === WALLET_ADDRESS;
+
+                      if (isSupportSection && isWalletLine) {
+                        // render the copy widget instead of a plain <li>
+                        return (
+                          <li key={itemIndex} style={{ listStyle: "none", marginLeft: "-1.2rem" }}>
+                            <CopyWalletRow address={WALLET_ADDRESS} />
+                          </li>
+                        );
+                      }
+
+                      return <li key={itemIndex}>{item}</li>;
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
           </div>
+
+
+          {games[current].name.includes("ANNOUNCEMENT") && (
+            <div className="wallet-btn">
+              <button
+                className="matrix-button"
+                onClick={() => onEnterGame("Runner")}
+                aria-label="Enter ANNOUNCEMENT Game"
+              >
+                MINI GAME
+              </button>
+            </div>
+          )}
 
           {games[current].name.includes("DODOS") && (
             <div className="wallet-btn">
@@ -194,7 +287,7 @@ export default function GameCarousel({ onEnterGame }) {
             </div>
           )}
 
-          {games[current].name.includes("ALICE IN WONDERLAND") && (
+          {games[current].name.includes("4D") && (
             <div className="wallet-btn">
               <button
                 className="matrix-button"
@@ -205,8 +298,6 @@ export default function GameCarousel({ onEnterGame }) {
               </button>
             </div>
           )}
-
-          {games[current].name.includes("SUPPORT") && <DonationContainer />}
         </motion.div>
 
         <button className="carousel-btn prev-btn" onClick={prevGame} aria-label="Previous game">
