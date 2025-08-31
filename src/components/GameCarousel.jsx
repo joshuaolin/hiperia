@@ -82,7 +82,7 @@ const games = [
         items: [
           "Control Dos to dodge obstacles",
           "Tap to Jump",
-          "Collect power-ups for special abilities"
+          "Have Fun and Enjoy"
         ],
       },
     ],

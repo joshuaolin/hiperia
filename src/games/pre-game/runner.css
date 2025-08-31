@@ -1,18 +1,5 @@
 @import "@solana/wallet-adapter-react-ui/styles.css";
 
-.mr-body {
-  width: 100%;
-  height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  overflow: auto;
-  background-color: #111;
-}
-
 .mr-game-container {
   position: relative;
   width: 90vw;
@@ -276,7 +263,7 @@ h2 {
   .mr-game-container {
     width: 95vw;
     height: 70vh; /* Adjusted from 60vh */
-    max-height: 360px; /* Adjusted from 320px */
+    max-height: 550px; /* Adjusted from 320px */
   }
   h1 {
     font-size: 1.6rem;
