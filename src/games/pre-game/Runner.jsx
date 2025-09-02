@@ -93,7 +93,7 @@ export default function Runner({ onBack }) {
       gravity: 0.6,
       slideTimer: 0,
       obstacleTimer: 0,
-      obstacleRate: 1100,
+      obstacleRate: 1500, // Increased from 1100
       obstacles: [],
       particles: [],
       auraParticles: [],
@@ -312,8 +312,8 @@ export default function Runner({ onBack }) {
     }
 
     // Difficulty
-    g.difficulty = Math.min(2, 1 + g.score * 0.02);
-    g.obstacleRate = Math.max(600, 1100 - g.score * 5);
+    g.difficulty = Math.min(2, 1 + g.score * 0.01); // Reduced from 0.02
+    g.obstacleRate = Math.max(600, 1500 - g.score * 3); // Adjusted from 1100 - g.score * 5
 
     // Power level
     g.powerLevel = Math.min(100, Math.floor(g.score / 2));
@@ -329,7 +329,7 @@ export default function Runner({ onBack }) {
   const createObstacle = useCallback(() => {
     const g = G.current;
     const type = Math.random() > 0.5 ? "laser" : "bullet";
-    const speed = 6 + Math.random() * 2;
+    const speed = 4 + Math.random() * 2; // Reduced from 6 + Math.random() * 2
     const width = type === "laser" ? 60 : 20;
     const y = type === "laser" ? g.groundY - 15 : g.groundY - 70;
     const height = type === "laser" ? 10 : 20;
