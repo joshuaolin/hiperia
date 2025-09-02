@@ -92,7 +92,7 @@ const games = [
   },
   {
     id: 2,
-    name: "DODOS",
+    name: "DODOS [OCT 2025]",
     description: [
       {
         title: "How to Play",
@@ -116,7 +116,7 @@ const games = [
   },
   {
     id: 3,
-    name: "FRUIT GAME",
+    name: "FRUIT GAME [Q1 2026]",
     description: [
       {
         title: "How to Play",
@@ -142,7 +142,7 @@ const games = [
   },
   {
     id: 4,
-    name: "4D",
+    name: "4D [Q1 2026]",
     description: [
       {
         title: "How to Play",
