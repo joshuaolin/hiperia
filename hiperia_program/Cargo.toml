@@ -1,8 +1,15 @@
 [workspace]
 resolver = "2"
 members = [
-    "programs/hiperia_program",
+  "programs/hiperia_program",
 ]
+
+[workspace.dependencies]
+solana-program = "1.18.26"
+solana-sdk = "1.18.26"
+solana-program-test = "1.18.26"
+solana-program-option = "1.18.26"
+solana-zk-token-sdk = "1.18.26"
 
 [profile.release]
 overflow-checks = true

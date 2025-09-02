@@ -4,7 +4,7 @@ import "../styles/footer.css";
 export default function Footer() {
   return (
     <footer role="contentinfo" className="footer">
-      <p>Powered by: HiperiaLabs</p>
+      <p>Powered by: <a href="https://github.com/joshuaolin/hiperia" target="_blank" rel="noopener noreferrer">HiperiaLabs</a></p>
     </footer>
   );
 }

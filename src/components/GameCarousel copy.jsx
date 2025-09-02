@@ -5,10 +5,9 @@ import "../styles/game-carousel.css";
 
 /** —— config —— **/
 const WALLET_ADDRESS = "Ghxn7ree6MFQxC8hFTJ8Lo319xEZzqVFLcmDLKVFpPaa";
-const WALLET_ADDRESS2 = "AJsbig6jgfZhHKL9LDQjFGNhuJ8qdEsqK2Hdh3YAL7rn";
 
 /** —— small, self-contained copy component —— **/
-function CopyWalletRow({ address = WALLET_ADDRESS || WALLET_ADDRESS2}) {
+function CopyWalletRow({ address = WALLET_ADDRESS }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -73,11 +72,10 @@ const games = [
         title: "SUPPORT HIPERIA",
         items: [
           "Funds will go directly into future development, community rewards, and ongoing improvements.",
-          "Supporters may receive eligibility for upcoming airdrop.*",
           "Solana address:",
           WALLET_ADDRESS,
-          "Memecoin CA:",
-          WALLET_ADDRESS2,
+          "Supporters may receive eligibility for upcoming airdrop.*",
+          "Memecoin CA: AJsbig6jgfZhHKL9LDQjFGNhuJ8qdEsqK2Hdh3YAL7rn"
         ],
       },
       {
@@ -234,12 +232,13 @@ export default function GameCarousel({ onEnterGame }) {
                     {section.items.map((item, itemIndex) => {
                       const isWalletLine =
                         typeof item === "string" &&
-                        (item.trim() === WALLET_ADDRESS || item.trim() === WALLET_ADDRESS2);
+                        item.trim() === WALLET_ADDRESS;
 
                       if (isSupportSection && isWalletLine) {
+                        // render the copy widget instead of a plain <li>
                         return (
                           <li key={itemIndex} style={{ listStyle: "none", marginLeft: "-1.2rem" }}>
-                            <CopyWalletRow address={item.trim()} />
+                            <CopyWalletRow address={WALLET_ADDRESS} />
                           </li>
                         );
                       }
@@ -251,6 +250,7 @@ export default function GameCarousel({ onEnterGame }) {
               );
             })}
           </div>
+
 
           {games[current].name.includes("ANNOUNCEMENT") && (
             <div className="wallet-btn">
