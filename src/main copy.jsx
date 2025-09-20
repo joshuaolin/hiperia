@@ -14,25 +14,8 @@ import "./styles/global.css";
 if (!window.Buffer) window.Buffer = Buffer;
 if (!globalThis.process) globalThis.process = { env: {} };
 
-// Set Devnet endpoint explicitly
 const endpoint = import.meta?.env?.VITE_SOLANA_RPC || "https://api.devnet.solana.com";
-console.log("Using RPC endpoint:", endpoint);
-
-// Initialize wallets with Devnet
-const wallets = [
-  new PhantomWalletAdapter({ network: "devnet" }),
-  new SolflareWalletAdapter({ network: "devnet" }),
-  new BackpackWalletAdapter({ network: "devnet" }),
-];
-
-// Optional: Add a check to avoid EVM interference
-const disableEvmWallets = () => {
-  if (window.ethereum && !window.solana) {
-    console.warn("EVM wallet detected. Disabling to prioritize Solana. Consider disabling EVM extensions.");
-    delete window.ethereum;
-  }
-};
-disableEvmWallets();
+const wallets = [new PhantomWalletAdapter(), new SolflareWalletAdapter(), new BackpackWalletAdapter()];
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

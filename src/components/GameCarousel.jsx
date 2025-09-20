@@ -48,7 +48,7 @@ const games = [
         title: "SUPPORT HIPERIA",
         items: [
           "Funds will go directly into future development, community rewards, and ongoing improvements.",
-          "Supporters may receive eligibility for upcoming airdrop.*",
+          "Supporters may receive eligibility for upcoming airdrop*",
           "DONATION ADDRESS (SOLANA NETWORK):",
           WALLET_ADDRESS,
           // "Memecoin CA:",
@@ -67,7 +67,7 @@ const games = [
   },
   {
     id: 2,
-    name: "DODOS [Q4 2025]",
+    name: "DODOS [UNDER MAINTENANCE]",
     description: [
       {
         title: "How to Play",

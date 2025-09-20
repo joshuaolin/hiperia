@@ -2,11 +2,12 @@ import React, { useState, useEffect, useCallback } from "react";
 import { debounce } from "lodash";
 import { FixedSizeList } from "react-window";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { Program, AnchorProvider, web3, BN } from "@coral-xyz/anchor";
+import { Program, AnchorProvider, web3, BN } from "@coral-xyz/anchor"; // Removed clusterApiUrl
 import idl from "../../idl/hiperia_program.json"; // Ensure this matches the generated IDL path
 import "./dodos.css";
 
-const PROGRAM_ID = new web3.PublicKey("4BqH8D4WRxthkMBKjyFHoWVBbrogaCWJf8oC2tV2HGnR");
+// Use your actual Devnet PROGRAM_ID here
+const PROGRAM_ID = new web3.PublicKey("4BqH8D4WRxthkMBKjyFHoWVBbrogaCWJf8oC2tV2HGnR"); // Replace with your Devnet-deployed ID
 
 const TicketCard = React.memo(({ ticket, onCheckResults }) => (
   <div className="ticket-card">
@@ -40,7 +41,7 @@ const TicketList = ({ tickets, onCheckResults }) => (
 
 export default function Dodos({ onBack }) {
   const { connection } = useConnection();
-  const { publicKey, connected, connect, signTransaction } = useWallet();
+  const { publicKey, connect, signTransaction } = useWallet();
   const [selectedNumbers, setSelectedNumbers] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [nextDraw, setNextDraw] = useState("");
@@ -52,21 +53,33 @@ export default function Dodos({ onBack }) {
   const [program, setProgram] = useState(null); // State to hold program instance
   const [isLoading, setIsLoading] = useState(true); // Loading state
 
-  // Initialize Anchor provider and program
+  // Initialize Anchor provider and program for Devnet
   useEffect(() => {
+    console.log("Initializing program:", { publicKey, signTransaction, connection });
     if (!publicKey || !signTransaction) {
+      console.log("Missing publicKey or signTransaction, skipping initialization");
       setIsLoading(true);
       return;
     }
 
-    const provider = new AnchorProvider(connection, { publicKey, signTransaction }, { commitment: "confirmed" });
+    const provider = new AnchorProvider(
+      connection,
+      { publicKey, signTransaction },
+      { commitment: "confirmed", preflightCommitment: "confirmed" }
+    );
+    console.log("Provider created:", provider);
+
+    // Debug the IDL
+    console.log("IDL loaded:", JSON.stringify(idl, null, 2)); // Pretty-print IDL for clarity
+
     try {
       const newProgram = new Program(idl, PROGRAM_ID, provider);
+      console.log("Program constructed successfully:", newProgram);
       setProgram(newProgram);
       setIsLoading(false);
     } catch (error) {
-      console.error("Failed to initialize program:", error);
-      setErrorMessage("Error initializing program. Check console for details.");
+      console.error("Failed to initialize program:", error.message, error.stack);
+      setErrorMessage(`Error initializing program: ${error.message}. Check console for details.`);
       setTimeout(() => setErrorMessage(""), 5000);
       setIsLoading(false);
     }
@@ -80,11 +93,15 @@ export default function Dodos({ onBack }) {
 
     // Fetch config to get ticket cost
     const fetchConfig = async () => {
-      if (!program) return;
+      if (!program) {
+        console.log("Program not available, skipping config fetch. IDL:", JSON.stringify(idl, null, 2));
+        return;
+      }
       try {
         const [configPda] = web3.PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
         const config = await program.account.config.fetch(configPda);
         setTicketCost(config.ticketCostLamports.toNumber() / 1e9); // Convert lamports to SOL
+        console.log("Fetched ticket cost:", ticketCost);
       } catch (error) {
         console.error("Failed to fetch config:", error);
         setErrorMessage("Failed to fetch ticket cost. Using default.");
@@ -185,7 +202,8 @@ export default function Dodos({ onBack }) {
   };
 
   const purchaseTicket = async () => {
-    if (!publicKey || selectedNumbers.length !== 2 || !program) { // Use publicKey instead of connected
+    if (!publicKey || selectedNumbers.length !== 2 || !program) {
+      console.log("Purchase check failed:", { publicKey, selectedNumbersLength: selectedNumbers.length, program });
       setErrorMessage("Please connect wallet, select 2 numbers, and ensure program is initialized.");
       setTimeout(() => setErrorMessage(""), 5000);
       return;
@@ -194,6 +212,8 @@ export default function Dodos({ onBack }) {
     try {
       setTransactionPending(true);
       setErrorMessage("");
+
+      console.log("Starting purchase with:", { selectedNumbers, publicKey });
 
       const [configPda] = web3.PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
       const [vaultPda] = web3.PublicKey.findProgramAddressSync([Buffer.from("vault")], PROGRAM_ID);
@@ -204,6 +224,8 @@ export default function Dodos({ onBack }) {
       );
 
       const drawTime = calculateNextDrawTime().unix;
+      console.log("Transaction accounts:", { configPda, vaultPda, ticketPda, user: publicKey });
+
       const tx = await program.methods
         .buyTicket(ticketNonce, new BN(drawTime), selectedNumbers)
         .accounts({
@@ -214,6 +236,8 @@ export default function Dodos({ onBack }) {
           systemProgram: web3.SystemProgram.programId,
         })
         .rpc();
+
+      console.log("Transaction successful:", tx);
 
       const newTicket = {
         id: ticketNonce.toString(),
@@ -232,8 +256,8 @@ export default function Dodos({ onBack }) {
       setSuccessMessage(`Ticket purchased for ${selectedNumbers.join(" - ")}! Tx: ${tx}`);
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
-      console.error("Purchase failed:", error);
-      setErrorMessage("Transaction failed. Please try again.");
+      console.error("Purchase failed:", error.message, error.stack);
+      setErrorMessage(`Transaction failed: ${error.message || "Unknown error"}. Check console for details.`);
       setTimeout(() => setErrorMessage(""), 5000);
     } finally {
       setTransactionPending(false);
