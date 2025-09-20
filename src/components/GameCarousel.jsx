@@ -67,7 +67,7 @@ const games = [
   },
   {
     id: 2,
-    name: "DODOS [UNDER MAINTENANCE]",
+    name: "DODOS [Q4 2025]",
     description: [
       {
         title: "How to Play",
@@ -263,7 +263,7 @@ export default function GameCarousel({ onEnterGame }) {
             </div>
           )}
 
-          {games[current].name.includes("DODOS") && (
+          {games[current].name.includes("DODOS1") && (
             <div className="wallet-btn">
               <button
                 className="matrix-button"

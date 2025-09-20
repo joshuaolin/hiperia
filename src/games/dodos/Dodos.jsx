@@ -2,12 +2,12 @@ import React, { useState, useEffect, useCallback } from "react";
 import { debounce } from "lodash";
 import { FixedSizeList } from "react-window";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { Program, AnchorProvider, web3, BN } from "@coral-xyz/anchor"; // Removed clusterApiUrl
-import idl from "../../idl/hiperia_program.json"; // Ensure this matches the generated IDL path
+import { Program, AnchorProvider, web3, BN } from "@coral-xyz/anchor";
+import idl from "../../idl/hiperia_program.json";
 import "./dodos.css";
 
-// Use your actual Devnet PROGRAM_ID here
-const PROGRAM_ID = new web3.PublicKey("4BqH8D4WRxthkMBKjyFHoWVBbrogaCWJf8oC2tV2HGnR"); // Replace with your Devnet-deployed ID
+// Use your Devnet PROGRAM_ID
+const PROGRAM_ID = new web3.PublicKey("4BqH8D4WRxthkMBKjyFHoWVBbrogaCWJf8oC2tV2HGnR");
 
 const TicketCard = React.memo(({ ticket, onCheckResults }) => (
   <div className="ticket-card">
@@ -49,11 +49,10 @@ export default function Dodos({ onBack }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [transactionPending, setTransactionPending] = useState(false);
   const [lastResults, setLastResults] = useState([]);
-  const [ticketCost, setTicketCost] = useState(0.0072); // Default, will fetch from program
-  const [program, setProgram] = useState(null); // State to hold program instance
-  const [isLoading, setIsLoading] = useState(true); // Loading state
+  const [ticketCost, setTicketCost] = useState(0.0072);
+  const [program, setProgram] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Initialize Anchor provider and program for Devnet
   useEffect(() => {
     console.log("Initializing program:", { publicKey, signTransaction, connection });
     if (!publicKey || !signTransaction) {
@@ -69,17 +68,29 @@ export default function Dodos({ onBack }) {
     );
     console.log("Provider created:", provider);
 
-    // Debug the IDL
-    console.log("IDL loaded:", JSON.stringify(idl, null, 2)); // Pretty-print IDL for clarity
+    console.log("IDL loaded:", JSON.stringify(idl, null, 2));
 
     try {
       const newProgram = new Program(idl, PROGRAM_ID, provider);
-      console.log("Program constructed successfully:", newProgram);
-      setProgram(newProgram);
+      console.log("Program constructed:", newProgram);
+      // Test config account existence
+      const [configPda] = web3.PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
+      newProgram.account.config.fetch(configPda).then(
+        () => {
+          console.log("Config account found!");
+          setProgram(newProgram);
+        },
+        (err) => {
+          console.error("Config fetch failed, program may need initialization:", err.message);
+          setProgram(newProgram); // Set anyway to allow manual testing
+          setErrorMessage("Program may need initialization. Check console.");
+          setTimeout(() => setErrorMessage(""), 5000);
+        }
+      );
       setIsLoading(false);
     } catch (error) {
       console.error("Failed to initialize program:", error.message, error.stack);
-      setErrorMessage(`Error initializing program: ${error.message}. Check console for details.`);
+      setErrorMessage(`Error initializing program: ${error.message}. Check console.`);
       setTimeout(() => setErrorMessage(""), 5000);
       setIsLoading(false);
     }
@@ -87,11 +98,8 @@ export default function Dodos({ onBack }) {
 
   useEffect(() => {
     const savedTickets = localStorage.getItem("dodosTickets");
-    if (savedTickets) {
-      setTickets(JSON.parse(savedTickets));
-    }
+    if (savedTickets) setTickets(JSON.parse(savedTickets));
 
-    // Fetch config to get ticket cost
     const fetchConfig = async () => {
       if (!program) {
         console.log("Program not available, skipping config fetch. IDL:", JSON.stringify(idl, null, 2));
@@ -100,11 +108,11 @@ export default function Dodos({ onBack }) {
       try {
         const [configPda] = web3.PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
         const config = await program.account.config.fetch(configPda);
-        setTicketCost(config.ticketCostLamports.toNumber() / 1e9); // Convert lamports to SOL
+        setTicketCost(config.ticketCostLamports.toNumber() / 1e9);
         console.log("Fetched ticket cost:", ticketCost);
       } catch (error) {
-        console.error("Failed to fetch config:", error);
-        setErrorMessage("Failed to fetch ticket cost. Using default.");
+        console.error("Failed to fetch config:", error.message);
+        setErrorMessage("Failed to fetch config. Ensure program is initialized on Devnet.");
         setTimeout(() => setErrorMessage(""), 5000);
       }
     };
@@ -114,7 +122,7 @@ export default function Dodos({ onBack }) {
   const calculateNextDrawTime = useCallback(() => {
     const now = new Date();
     const asiaTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
-    const drawTimes = [14, 16]; // 2PM, 4PM
+    const drawTimes = [14, 16];
     let nextDrawTime = new Date(asiaTime);
 
     for (const hour of drawTimes) {
@@ -127,7 +135,6 @@ export default function Dodos({ onBack }) {
     }
 
     if (nextDrawTime <= asiaTime) {
-      nextDrawTime = new Date(asiaTime);
       nextDrawTime.setDate(asiaTime.getDate() + 1);
       nextDrawTime.setHours(drawTimes[0], 0, 0, 0);
     }
@@ -149,9 +156,7 @@ export default function Dodos({ onBack }) {
     const nextDrawTime = new Date(calculateNextDrawTime().unix * 1000);
     const diff = nextDrawTime - now;
 
-    if (diff <= 0) {
-      return "Drawing in progress...";
-    }
+    if (diff <= 0) return "Drawing in progress...";
 
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -160,10 +165,7 @@ export default function Dodos({ onBack }) {
   }, [calculateNextDrawTime]);
 
   useEffect(() => {
-    const debouncedUpdateNextDraw = debounce(() => {
-      setNextDraw(calculateNextDrawCountdown());
-    }, 1000);
-
+    const debouncedUpdateNextDraw = debounce(() => setNextDraw(calculateNextDrawCountdown()), 1000);
     debouncedUpdateNextDraw();
     const interval = setInterval(debouncedUpdateNextDraw, 1000);
     return () => {
@@ -175,12 +177,8 @@ export default function Dodos({ onBack }) {
   const handleNumberSelect = useCallback(
     debounce((number) => {
       setSelectedNumbers((prev) => {
-        if (prev.includes(number)) {
-          return prev.filter((n) => n !== number);
-        }
-        if (prev.length < 2 && !prev.includes(number)) {
-          return [...prev, number];
-        }
+        if (prev.includes(number)) return prev.filter((n) => n !== number);
+        if (prev.length < 2 && !prev.includes(number)) return [...prev, number];
         return prev;
       });
     }, 100),
@@ -217,7 +215,7 @@ export default function Dodos({ onBack }) {
 
       const [configPda] = web3.PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
       const [vaultPda] = web3.PublicKey.findProgramAddressSync([Buffer.from("vault")], PROGRAM_ID);
-      const ticketNonce = new BN(Math.floor(Math.random() * 1e9)); // Random u64 nonce
+      const ticketNonce = new BN(Math.floor(Math.random() * 1e9));
       const [ticketPda] = web3.PublicKey.findProgramAddressSync(
         [Buffer.from("ticket"), publicKey.toBuffer(), ticketNonce.toArrayLike(Buffer, "le", 8)],
         PROGRAM_ID
@@ -257,7 +255,7 @@ export default function Dodos({ onBack }) {
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
       console.error("Purchase failed:", error.message, error.stack);
-      setErrorMessage(`Transaction failed: ${error.message || "Unknown error"}. Check console for details.`);
+      setErrorMessage(`Transaction failed: ${error.message || "Unknown error"}. Check console.`);
       setTimeout(() => setErrorMessage(""), 5000);
     } finally {
       setTransactionPending(false);
@@ -299,18 +297,12 @@ export default function Dodos({ onBack }) {
     [program]
   );
 
-  if (isLoading) {
-    return <div className="loading-spinner">Loading game...</div>; // Show loading while initializing
-  }
+  if (isLoading) return <div className="loading-spinner">Loading game...</div>;
 
   return (
     <div className="dodos-container">
       <div className="wallet-btn back-button-container">
-        <button
-          className="matrix-button back-btn"
-          onClick={onBack}
-          aria-label="Back to Game Carousel"
-        >
+        <button className="matrix-button back-btn" onClick={onBack} aria-label="Back to Game Carousel">
           <span className="button-text">BACK TO GAMES</span>
         </button>
       </div>
@@ -367,19 +359,13 @@ export default function Dodos({ onBack }) {
                 </span>
               </button>
 
-              {transactionPending && (
-                <div className="loading-spinner">Processing Transaction...</div>
-              )}
+              {transactionPending && <div className="loading-spinner">Processing Transaction...</div>}
               {successMessage && <p className="success-message">{successMessage}</p>}
               {errorMessage && <p className="error-message">{errorMessage}</p>}
               {!publicKey && (
                 <div className="wallet-notice">
                   <p>Please connect your wallet to play.</p>
-                  <button
-                    className="matrix-button"
-                    onClick={handleConnectWallet}
-                    aria-label="Connect wallet"
-                  >
+                  <button className="matrix-button" onClick={handleConnectWallet} aria-label="Connect wallet">
                     Connect Wallet
                   </button>
                 </div>

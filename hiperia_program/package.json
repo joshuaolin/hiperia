@@ -22,5 +22,15 @@
     "ts-mocha": "^11.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
-  }
+  },
+  "name": "hiperia_program",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "keywords": [],
+  "author": "",
+  "type": "commonjs"
 }
