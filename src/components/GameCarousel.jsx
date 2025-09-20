@@ -92,7 +92,7 @@ const games = [
   },
   {
     id: 2,
-    name: "DODOS [OCT 2025]",
+    name: "DODOS [Q4 2025]",
     description: [
       {
         title: "How to Play",
