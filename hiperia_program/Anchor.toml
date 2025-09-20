@@ -5,7 +5,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-hiperia_program = "ByMjwdbvNGEbVNt89aLkg86Em25cpVPgqaZN2fMs1X7T"
+hiperia_program = "4BqH8D4WRxthkMBKjyFHoWVBbrogaCWJf8oC2tV2HGnR"
 
 [registry]
 url = "https://anchor.projectserum.com"

@@ -1,11 +1,5 @@
+/* Dodos Lottery Game Styles */
 @import "@solana/wallet-adapter-react-ui/styles.css";
-
-:root {
-  --accent-color: #00ff00;
-  --hover-accent: #00cc00;
-  --text-color: #ffffff;
-  --section-bg: rgba(0, 0, 0, 0.8);
-}
 
 .dodos-container {
   display: flex;
@@ -29,6 +23,14 @@
   margin-bottom: 0.5rem;
   margin-top: 1rem;
   box-sizing: border-box;
+}
+
+.game-title {
+  font-family: "Orbitron", monospace;
+  color: var(--hover-accent);
+  text-align: center;
+  margin-bottom: 0.5rem;
+  font-size: clamp(1.2rem, 3vw, 1.5rem);
 }
 
 .game-sections {
@@ -79,6 +81,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  will-change: background, transform;
 }
 
 .number-btn:hover:not(:disabled) {
@@ -127,6 +130,7 @@
   border-radius: 8px;
   cursor: pointer;
   transition: background-color 0.3s ease;
+  will-change: background-color;
 }
 
 .matrix-button:hover {
@@ -138,7 +142,8 @@
   transform: scale(0.95);
 }
 
-.back-btn {
+.back-btn, .donate-btn {
+  box-sizing: border-box;
   background: rgba(0, 0, 0, 0.8);
   color: var(--text-color);
   border: 2px solid var(--accent-color);
@@ -149,14 +154,16 @@
   border-radius: 8px;
   cursor: pointer;
   transition: background-color 0.3s ease;
+  white-space: nowrap;
+  will-change: background-color;
 }
 
-.back-btn:hover {
+.back-btn:hover, .donate-btn:hover {
   background: var(--accent-color);
   color: #000;
 }
 
-.back-btn:active {
+.back-btn:active, .donate-btn:active {
   transform: scale(0.95);
 }
 
@@ -169,12 +176,6 @@
 
 .success-message {
   color: var(--hover-accent);
-  margin-top: 0.3rem;
-  font-size: clamp(0.7rem, 2vw, 0.9rem);
-}
-
-.error-message {
-  color: #ff4500;
   margin-top: 0.3rem;
   font-size: clamp(0.7rem, 2vw, 0.9rem);
 }
@@ -296,7 +297,7 @@
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
 
-  .back-btn {
+  .back-btn, .donate-btn {
     padding: 0.3rem 0.8rem;
     font-size: clamp(0.7rem, 2vw, 0.9rem);
     height: 1.8rem;
@@ -334,10 +335,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .number-btn,
-  .matrix-button,
-  .check-results-btn,
-  .back-btn {
+  .number-btn, .matrix-button, .check-results-btn, .back-btn, .donate-btn {
     transition: none;
     animation: none;
   }

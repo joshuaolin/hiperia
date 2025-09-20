@@ -1,11 +1,14 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program::{transfer, Transfer};
-use solana_program::keccak::{hashv};
+use anchor_lang::solana_program::keccak::hashv;
 
-declare_id!("ByMjwdbvNGEbVNt89aLkg86Em25cpVPgqaZN2fMs1X7T");
+declare_id!("4BqH8D4WRxthkMBKjyFHoWVBbrogaCWJf8oC2tV2HGnR");
 
 /// settlement window in seconds (5 minutes)
 const SETTLEMENT_WINDOW_SECS: i64 = 300;
+
+/// optional guard: allow buying tickets within this many hours of the target draw
+const BUY_AHEAD_LIMIT_HOURS: i64 = 24;
 
 /// game domain
 const MAX_NUMBER: u8 = 22;
@@ -21,7 +24,7 @@ const RESULT_SEED: &[u8] = b"result";
 pub mod hiperia_program {
     use super::*;
 
-    /// one-time config
+    /// Initialize program config
     pub fn initialize(
         ctx: Context<Initialize>,
         ticket_cost_lamports: u64,
@@ -29,18 +32,25 @@ pub mod hiperia_program {
     ) -> Result<()> {
         let cfg = &mut ctx.accounts.config;
         require!(!cfg.is_initialized, ErrorCode::AlreadyInitialized);
+        require!(ticket_cost_lamports > 0, ErrorCode::InvalidTicketCost);
+        require!(payout_lamports > 0, ErrorCode::InvalidPayout);
 
         cfg.is_initialized = true;
         cfg.ticket_cost_lamports = ticket_cost_lamports;
         cfg.payout_lamports = payout_lamports;
-
-        // anchor 0.31: bumps are fields
         cfg.bump = ctx.bumps.config;
+
         ctx.accounts.vault.bump = ctx.bumps.vault;
+
+        emit!(Initialized {
+            ticket_cost_lamports,
+            payout_lamports
+        });
+
         Ok(())
     }
 
-    /// user buys a ticket with two ordered numbers and a target draw_time
+    /// User buys a ticket with two ordered numbers and a target draw_time
     pub fn buy_ticket(
         ctx: Context<BuyTicket>,
         ticket_nonce: u64,
@@ -49,11 +59,25 @@ pub mod hiperia_program {
     ) -> Result<()> {
         let cfg = &ctx.accounts.config;
         require!(cfg.is_initialized, ErrorCode::Uninitialized);
-
-        // validate picks
         require!(valid_numbers(&numbers), ErrorCode::InvalidNumbers);
 
-        // take payment into vault
+        let now = Clock::get()?.unix_timestamp;
+        require!(
+            draw_time >= now.saturating_sub(60 * 60) &&
+            draw_time <= now.saturating_add(60 * 60 * BUY_AHEAD_LIMIT_HOURS),
+            ErrorCode::BadDrawTime
+        );
+
+        // Validate nonce uniqueness (optional, but recommended)
+        let existing_tickets = ctx.remaining_accounts.iter().filter(|acc| {
+            acc.owner == ctx.program_id && acc.data.borrow()[8..40] == ctx.accounts.user.key().to_bytes()
+        });
+        for acc in existing_tickets {
+            let ticket = Ticket::try_deserialize(&mut &acc.data.borrow()[..])?;
+            require!(ticket.nonce != ticket_nonce, ErrorCode::NonceAlreadyUsed);
+        }
+
+        // Transfer payment to vault
         transfer(
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
@@ -65,7 +89,6 @@ pub mod hiperia_program {
             cfg.ticket_cost_lamports,
         )?;
 
-        // record ticket
         let t = &mut ctx.accounts.ticket;
         t.user = ctx.accounts.user.key();
         t.nonce = ticket_nonce;
@@ -75,19 +98,26 @@ pub mod hiperia_program {
         t.bump = ctx.bumps.ticket;
         t.numbers = numbers;
 
+        emit!(TicketPurchased {
+            user: t.user,
+            nonce: t.nonce,
+            draw_time: t.draw_time,
+            numbers: t.numbers,
+            paid_lamports: t.paid_lamports,
+        });
+
         Ok(())
     }
 
-    /// publish result numbers for a draw_time (anyone can call, once).
-    /// demo rng: keccak(clock.now, draw_time, vault, config)
+    /// Publish result numbers for a draw_time (demo RNG, replace with oracle in production)
     pub fn publish_result(ctx: Context<PublishResult>, draw_time: i64) -> Result<()> {
         let clock = Clock::get()?;
-        // allow publication at >= draw_time (or slightly before if you want)
         require!(clock.unix_timestamp >= draw_time, ErrorCode::TooEarly);
 
         let r = &mut ctx.accounts.result;
         require!(!r.is_published, ErrorCode::AlreadyPublished);
 
+        // TODO: For production, use a secure RNG like Chainlink VRF instead of keccak
         let digest = hashv(&[
             &clock.unix_timestamp.to_le_bytes(),
             &draw_time.to_le_bytes(),
@@ -96,32 +126,33 @@ pub mod hiperia_program {
         ])
         .0;
 
-        // derive two distinct 1..=MAX_NUMBER ordered values from digest
-        let mut a = (u16::from(digest[0]) << 8 | u16::from(digest[1])) % (MAX_NUMBER as u16);
-        let mut b = (u16::from(digest[2]) << 8 | u16::from(digest[3])) % (MAX_NUMBER as u16);
+        let a = (u16::from(digest[0]) << 8 | u16::from(digest[1])) % (MAX_NUMBER as u16);
+        let b = (u16::from(digest[2]) << 8 | u16::from(digest[3])) % (MAX_NUMBER as u16);
 
-        // map 0..(MAX_NUMBER-1) → 1..=MAX_NUMBER
-        let mut na = (a as u8) + 1;
-        let mut nb = (b as u8) + 1;
+        let na = (a as u8) + 1;  // Removed `mut` as suggested
+        let mut nb = (b as u8) + 1;  // Kept `mut` because it’s modified below
         if na == nb {
-            // push second forward cyclically to ensure distinct
             nb = if nb == MAX_NUMBER { 1 } else { nb + 1 };
         }
 
         r.draw_time = draw_time;
-        r.numbers = [na, nb]; // ordered
+        r.numbers = [na, nb];
         r.is_published = true;
         r.bump = ctx.bumps.result;
+
+        emit!(ResultPublished {
+            draw_time,
+            numbers: r.numbers,
+        });
 
         Ok(())
     }
 
-    /// settle a ticket: must be within [draw_time, draw_time + window]; pays if exact ordered match
+    /// Settle a ticket within the settlement window
     pub fn settle_ticket(ctx: Context<SettleTicket>) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
         let t = &mut ctx.accounts.ticket;
 
-        // only owner can settle (optional)
         require_keys_eq!(t.user, ctx.accounts.user.key(), ErrorCode::Unauthorized);
         require!(!t.settled, ErrorCode::AlreadySettled);
         require!(
@@ -129,18 +160,16 @@ pub mod hiperia_program {
             ErrorCode::SettlementWindowClosed
         );
 
-        // ensure result exists & published
         let r = &ctx.accounts.result;
         require!(r.is_published, ErrorCode::ResultNotPublished);
         require_eq!(r.draw_time, t.draw_time, ErrorCode::MismatchedDraw);
 
-        // match if both ordered numbers equal
         let is_winner = t.numbers == r.numbers;
 
         if is_winner {
-            // pay fixed payout from vault to user
             let payout = ctx.accounts.config.payout_lamports;
             let signer_seeds: &[&[u8]] = &[VAULT_SEED, &[ctx.accounts.vault.bump]];
+
             anchor_lang::system_program::transfer(
                 CpiContext::new_with_signer(
                     ctx.accounts.system_program.to_account_info(),
@@ -154,13 +183,19 @@ pub mod hiperia_program {
             )?;
         }
 
-        // mark settled either way (one ticket, one outcome)
         t.settled = true;
+
+        emit!(TicketSettled {
+            user: t.user,
+            nonce: t.nonce,
+            draw_time: t.draw_time,
+            numbers: t.numbers,
+            is_winner,
+        });
+
         Ok(())
     }
 }
-
-/* ---------------- helpers ---------------- */
 
 fn within_window(current_time: i64, draw_time: i64, window_secs: i64) -> bool {
     let end = draw_time.saturating_add(window_secs.max(0));
@@ -168,13 +203,10 @@ fn within_window(current_time: i64, draw_time: i64, window_secs: i64) -> bool {
 }
 
 fn valid_numbers(nums: &[u8; NUM_PICKS]) -> bool {
-    // two distinct picks in 1..=MAX_NUMBER
     let a = nums[0];
     let b = nums[1];
     a >= 1 && a <= MAX_NUMBER && b >= 1 && b <= MAX_NUMBER && a != b
 }
-
-/* ---------------- accounts ---------------- */
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -297,7 +329,6 @@ pub struct SettleTicket<'info> {
     )]
     pub ticket: Account<'info, Ticket>,
 
-    // result for this draw_time must already exist
     #[account(
         seeds = [RESULT_SEED, &ticket.draw_time.to_le_bytes()],
         bump = result.bump
@@ -310,26 +341,25 @@ pub struct SettleTicket<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/* ---------------- data structs ---------------- */
-
 #[account]
 pub struct Config {
     pub is_initialized: bool,      // 1
     pub bump: u8,                  // 1
     pub ticket_cost_lamports: u64, // 8
     pub payout_lamports: u64,      // 8
-    pub numbers: [u8; 2],
+    pub padding: [u8; 32],         // 32 for future use
 }
 impl Config {
-    pub const SPACE: usize = 8 + 1 + 1 + 8 + 8;
+    pub const SPACE: usize = 8 + 1 + 1 + 8 + 8 + 32;
 }
 
 #[account]
 pub struct Vault {
-    pub bump: u8, // 1
+    pub bump: u8,      // 1
+    pub padding: [u8; 32], // 32 for future use
 }
 impl Vault {
-    pub const SPACE: usize = 8 + 1;
+    pub const SPACE: usize = 8 + 1 + 32;
 }
 
 #[account]
@@ -340,10 +370,11 @@ pub struct Ticket {
     pub paid_lamports: u64,      // 8
     pub settled: bool,           // 1
     pub bump: u8,                // 1
-    pub numbers: [u8; NUM_PICKS] // 2
+    pub numbers: [u8; NUM_PICKS], // 2
+    pub padding: [u8; 32],       // 32 for future use
 }
 impl Ticket {
-    pub const SPACE: usize = 8 + 32 + 8 + 8 + 8 + 1 + 1 + NUM_PICKS; // = 8+32+8+8+8+1+1+2
+    pub const SPACE: usize = 8 + 32 + 8 + 8 + 8 + 1 + 1 + NUM_PICKS + 32;
 }
 
 #[account]
@@ -352,12 +383,41 @@ pub struct ResultAccount {
     pub numbers: [u8; NUM_PICKS], // 2
     pub is_published: bool,       // 1
     pub bump: u8,                 // 1
+    pub padding: [u8; 32],       // 32 for future use
 }
 impl ResultAccount {
-    pub const SPACE: usize = 8 + 8 + NUM_PICKS + 1 + 1; // 8 disc + fields
+    pub const SPACE: usize = 8 + 8 + NUM_PICKS + 1 + 1 + 32;
 }
 
-/* ---------------- errors ---------------- */
+#[event]
+pub struct Initialized {
+    pub ticket_cost_lamports: u64,
+    pub payout_lamports: u64,
+}
+
+#[event]
+pub struct TicketPurchased {
+    pub user: Pubkey,
+    pub nonce: u64,
+    pub draw_time: i64,
+    pub numbers: [u8; 2],
+    pub paid_lamports: u64,
+}
+
+#[event]
+pub struct ResultPublished {
+    pub draw_time: i64,
+    pub numbers: [u8; 2],
+}
+
+#[event]
+pub struct TicketSettled {
+    pub user: Pubkey,
+    pub nonce: u64,
+    pub draw_time: i64,
+    pub numbers: [u8; 2],
+    pub is_winner: bool,
+}
 
 #[error_code]
 pub enum ErrorCode {
@@ -367,22 +427,26 @@ pub enum ErrorCode {
     Uninitialized,
     #[msg("Settlement window closed")]
     SettlementWindowClosed,
-    #[msg("Math overflow")]
-    MathOverflow,
-    #[msg("Unauthorized")]
+    #[msg("Unauthorized access")]
     Unauthorized,
     #[msg("Ticket already settled")]
     AlreadySettled,
-    #[msg("Bump not found")]
-    BumpNotFound,
-    #[msg("Invalid numbers")]
+    #[msg("Invalid numbers selected")]
     InvalidNumbers,
     #[msg("Result already published")]
     AlreadyPublished,
-    #[msg("Result not published")]
+    #[msg("Result not yet published")]
     ResultNotPublished,
     #[msg("Too early to publish result")]
     TooEarly,
-    #[msg("Result/ticket draw mismatch")]
+    #[msg("Result and ticket draw times do not match")]
     MismatchedDraw,
+    #[msg("Draw time too far in past or future")]
+    BadDrawTime,
+    #[msg("Ticket nonce already used")]
+    NonceAlreadyUsed,
+    #[msg("Invalid ticket cost")]
+    InvalidTicketCost,
+    #[msg("Invalid payout amount")]
+    InvalidPayout,
 }

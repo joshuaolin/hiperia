@@ -5,9 +5,10 @@ import "../styles/game-carousel.css";
 
 /** —— config —— **/
 const WALLET_ADDRESS = "Ghxn7ree6MFQxC8hFTJ8Lo319xEZzqVFLcmDLKVFpPaa";
+const WALLET_ADDRESS2 = "AJsbig6jgfZhHKL9LDQjFGNhuJ8qdEsqK2Hdh3YAL7rn";
 
 /** —— small, self-contained copy component —— **/
-function CopyWalletRow({ address = WALLET_ADDRESS }) {
+function CopyWalletRow({ address = WALLET_ADDRESS || WALLET_ADDRESS2}) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -72,10 +73,11 @@ const games = [
         title: "SUPPORT HIPERIA",
         items: [
           "Funds will go directly into future development, community rewards, and ongoing improvements.",
-          "Solana address:",
-          WALLET_ADDRESS,
           "Supporters may receive eligibility for upcoming airdrop.*",
-          "Memecoin CA: AJsbig6jgfZhHKL9LDQjFGNhuJ8qdEsqK2Hdh3YAL7rn"
+          "DONATION ADDRESS (SOLANA NETWORK):",
+          WALLET_ADDRESS,
+          //"Memecoin CA:",
+          //WALLET_ADDRESS2,
         ],
       },
       {
@@ -90,7 +92,7 @@ const games = [
   },
   {
     id: 2,
-    name: "DODOS",
+    name: "DODOS [Q4 2025]",
     description: [
       {
         title: "How to Play",
@@ -114,7 +116,7 @@ const games = [
   },
   {
     id: 3,
-    name: "FRUIT GAME",
+    name: "FRUIT GAME [Q1 2026]",
     description: [
       {
         title: "How to Play",
@@ -140,7 +142,7 @@ const games = [
   },
   {
     id: 4,
-    name: "4D",
+    name: "4D [Q1 2026]",
     description: [
       {
         title: "How to Play",
@@ -232,13 +234,12 @@ export default function GameCarousel({ onEnterGame }) {
                     {section.items.map((item, itemIndex) => {
                       const isWalletLine =
                         typeof item === "string" &&
-                        item.trim() === WALLET_ADDRESS;
+                        (item.trim() === WALLET_ADDRESS || item.trim() === WALLET_ADDRESS2);
 
                       if (isSupportSection && isWalletLine) {
-                        // render the copy widget instead of a plain <li>
                         return (
                           <li key={itemIndex} style={{ listStyle: "none", marginLeft: "-1.2rem" }}>
-                            <CopyWalletRow address={WALLET_ADDRESS} />
+                            <CopyWalletRow address={item.trim()} />
                           </li>
                         );
                       }
@@ -250,7 +251,6 @@ export default function GameCarousel({ onEnterGame }) {
               );
             })}
           </div>
-
 
           {games[current].name.includes("ANNOUNCEMENT") && (
             <div className="wallet-btn">
@@ -264,7 +264,7 @@ export default function GameCarousel({ onEnterGame }) {
             </div>
           )}
 
-          {games[current].name.includes("DODOS1") && (
+          {games[current].name.includes("DODOS") && (
             <div className="wallet-btn">
               <button
                 className="matrix-button"

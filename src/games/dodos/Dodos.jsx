@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { debounce } from "lodash";
 import { FixedSizeList } from "react-window";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { Program, AnchorProvider, web3, BN } from "@coral-xyz/anchor";
+import idl from "../../idl/hiperia_program.json"; // Ensure this matches the generated IDL path
 import "./dodos.css";
+
+const PROGRAM_ID = new web3.PublicKey("4BqH8D4WRxthkMBKjyFHoWVBbrogaCWJf8oC2tV2HGnR");
 
 const TicketCard = React.memo(({ ticket, onCheckResults }) => (
   <div className="ticket-card">
     <p className="ticket-numbers">{ticket.numbers.join(" - ")}</p>
-    <p className="ticket-time">Purchased: {ticket.purchaseTime}</p>
+    <p className="ticket-time">Purchased: {new Date(ticket.purchaseTime * 1000).toLocaleString()}</p>
     <button
       className="matrix-button check-results-btn"
       onClick={() => onCheckResults(ticket)}
@@ -35,32 +39,65 @@ const TicketList = ({ tickets, onCheckResults }) => (
 );
 
 export default function Dodos({ onBack }) {
-  const { connected, connect } = useWallet();
+  const { connection } = useConnection();
+  const { publicKey, connected, connect, signTransaction } = useWallet();
   const [selectedNumbers, setSelectedNumbers] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [nextDraw, setNextDraw] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
   const [transactionPending, setTransactionPending] = useState(false);
   const [lastResults, setLastResults] = useState([]);
-  const ticketCost = 0.0072;
+  const [ticketCost, setTicketCost] = useState(0.0072); // Default, will fetch from program
+  const [program, setProgram] = useState(null); // State to hold program instance
+  const [isLoading, setIsLoading] = useState(true); // Loading state
+
+  // Initialize Anchor provider and program
+  useEffect(() => {
+    if (!publicKey || !signTransaction) {
+      setIsLoading(true);
+      return;
+    }
+
+    const provider = new AnchorProvider(connection, { publicKey, signTransaction }, { commitment: "confirmed" });
+    try {
+      const newProgram = new Program(idl, PROGRAM_ID, provider);
+      setProgram(newProgram);
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Failed to initialize program:", error);
+      setErrorMessage("Error initializing program. Check console for details.");
+      setTimeout(() => setErrorMessage(""), 5000);
+      setIsLoading(false);
+    }
+  }, [connection, publicKey, signTransaction]);
 
   useEffect(() => {
     const savedTickets = localStorage.getItem("dodosTickets");
     if (savedTickets) {
       setTickets(JSON.parse(savedTickets));
     }
-    setLastResults([
-      { time: "2:00 PM", numbers: [3, 11], winners: 2 },
-      { time: "4:00 PM", numbers: [7, 15], winners: 0 },
-    ]);
-  }, []);
+
+    // Fetch config to get ticket cost
+    const fetchConfig = async () => {
+      if (!program) return;
+      try {
+        const [configPda] = web3.PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
+        const config = await program.account.config.fetch(configPda);
+        setTicketCost(config.ticketCostLamports.toNumber() / 1e9); // Convert lamports to SOL
+      } catch (error) {
+        console.error("Failed to fetch config:", error);
+        setErrorMessage("Failed to fetch ticket cost. Using default.");
+        setTimeout(() => setErrorMessage(""), 5000);
+      }
+    };
+    fetchConfig();
+  }, [program]);
 
   const calculateNextDrawTime = useCallback(() => {
     const now = new Date();
-    const asiaTime = new Date(
-      now.toLocaleString("en-US", { timeZone: "Asia/Shanghai" })
-    );
-    const drawTimes = [14, 16];
+    const asiaTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
+    const drawTimes = [14, 16]; // 2PM, 4PM
     let nextDrawTime = new Date(asiaTime);
 
     for (const hour of drawTimes) {
@@ -78,39 +115,23 @@ export default function Dodos({ onBack }) {
       nextDrawTime.setHours(drawTimes[0], 0, 0, 0);
     }
 
-    return nextDrawTime.toLocaleString("en-US", {
-      timeZone: "Asia/Shanghai",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).replace(",", "");
+    return {
+      display: nextDrawTime.toLocaleString("en-US", {
+        timeZone: "Asia/Shanghai",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).replace(",", ""),
+      unix: Math.floor(nextDrawTime.getTime() / 1000),
+    };
   }, []);
 
   const calculateNextDrawCountdown = useCallback(() => {
     const now = new Date();
-    const asiaTime = new Date(
-      now.toLocaleString("en-US", { timeZone: "Asia/Shanghai" })
-    );
-    const drawTimes = [14, 16];
-    let nextDrawTime = new Date(asiaTime);
-
-    for (const hour of drawTimes) {
-      const drawTime = new Date(asiaTime);
-      drawTime.setHours(hour, 0, 0, 0);
-      if (drawTime > asiaTime) {
-        nextDrawTime = drawTime;
-        break;
-      }
-    }
-
-    if (nextDrawTime <= asiaTime) {
-      nextDrawTime = new Date(asiaTime);
-      nextDrawTime.setDate(asiaTime.getDate() + 1);
-      nextDrawTime.setHours(drawTimes[0], 0, 0, 0);
-    }
-
+    const nextDrawTime = new Date(calculateNextDrawTime().unix * 1000);
     const diff = nextDrawTime - now;
+
     if (diff <= 0) {
       return "Drawing in progress...";
     }
@@ -118,26 +139,30 @@ export default function Dodos({ onBack }) {
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    return `${hours.toString().padStart(2, "0")}:${minutes
-      .toString()
-      .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  }, []);
+    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  }, [calculateNextDrawTime]);
 
   useEffect(() => {
-    const updateNextDraw = () => setNextDraw(calculateNextDrawCountdown());
-    updateNextDraw();
-    const interval = setInterval(updateNextDraw, 1000);
-    return () => clearInterval(interval);
+    const debouncedUpdateNextDraw = debounce(() => {
+      setNextDraw(calculateNextDrawCountdown());
+    }, 1000);
+
+    debouncedUpdateNextDraw();
+    const interval = setInterval(debouncedUpdateNextDraw, 1000);
+    return () => {
+      debouncedUpdateNextDraw.cancel();
+      clearInterval(interval);
+    };
   }, [calculateNextDrawCountdown]);
 
   const handleNumberSelect = useCallback(
     debounce((number) => {
       setSelectedNumbers((prev) => {
         if (prev.includes(number)) {
-          return prev.filter((n) => n !== number); // Allow deselect
+          return prev.filter((n) => n !== number);
         }
         if (prev.length < 2 && !prev.includes(number)) {
-          return [...prev, number]; // Prevent duplicates
+          return [...prev, number];
         }
         return prev;
       });
@@ -145,10 +170,7 @@ export default function Dodos({ onBack }) {
     []
   );
 
-  const clearSelection = () => {
-    setSelectedNumbers([]);
-  };
-
+  const clearSelection = () => setSelectedNumbers([]);
   const generateRandomSelection = () => {
     clearSelection();
     const newSelection = [];
@@ -156,38 +178,63 @@ export default function Dodos({ onBack }) {
       let randomNumber;
       do {
         randomNumber = Math.floor(Math.random() * 22) + 1;
-      } while (newSelection.includes(randomNumber)); // Ensure no duplicates
+      } while (newSelection.includes(randomNumber));
       newSelection.push(randomNumber);
     }
     setSelectedNumbers(newSelection);
   };
 
   const purchaseTicket = async () => {
-    if (!connected || selectedNumbers.length !== 2) {
+    if (!publicKey || selectedNumbers.length !== 2 || !program) { // Use publicKey instead of connected
+      setErrorMessage("Please connect wallet, select 2 numbers, and ensure program is initialized.");
+      setTimeout(() => setErrorMessage(""), 5000);
       return;
     }
+
     try {
       setTransactionPending(true);
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      setErrorMessage("");
+
+      const [configPda] = web3.PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
+      const [vaultPda] = web3.PublicKey.findProgramAddressSync([Buffer.from("vault")], PROGRAM_ID);
+      const ticketNonce = new BN(Math.floor(Math.random() * 1e9)); // Random u64 nonce
+      const [ticketPda] = web3.PublicKey.findProgramAddressSync(
+        [Buffer.from("ticket"), publicKey.toBuffer(), ticketNonce.toArrayLike(Buffer, "le", 8)],
+        PROGRAM_ID
+      );
+
+      const drawTime = calculateNextDrawTime().unix;
+      const tx = await program.methods
+        .buyTicket(ticketNonce, new BN(drawTime), selectedNumbers)
+        .accounts({
+          config: configPda,
+          vault: vaultPda,
+          ticket: ticketPda,
+          user: publicKey,
+          systemProgram: web3.SystemProgram.programId,
+        })
+        .rpc();
+
       const newTicket = {
-        id: Date.now(),
+        id: ticketNonce.toString(),
         numbers: [...selectedNumbers],
-        purchaseTime: new Date().toLocaleTimeString(),
-        drawTime: calculateNextDrawTime(),
+        purchaseTime: Math.floor(Date.now() / 1000),
+        drawTime,
       };
+
       setTickets((prev) => {
         const updated = [...prev, newTicket];
         localStorage.setItem("dodosTickets", JSON.stringify(updated));
         return updated;
       });
+
       setSelectedNumbers([]);
-      setSuccessMessage(
-        `Successfully purchased ticket for ${newTicket.numbers.join(" - ")}!`
-      );
+      setSuccessMessage(`Ticket purchased for ${selectedNumbers.join(" - ")}! Tx: ${tx}`);
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
-      console.error(error);
-      alert("Transaction failed. Please try again.");
+      console.error("Purchase failed:", error);
+      setErrorMessage("Transaction failed. Please try again.");
+      setTimeout(() => setErrorMessage(""), 5000);
     } finally {
       setTransactionPending(false);
     }
@@ -199,24 +246,38 @@ export default function Dodos({ onBack }) {
       setSuccessMessage("Wallet connected successfully!");
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
-      console.error(error);
-      alert("Wallet connection failed. Please try again.");
+      console.error("Wallet connection failed:", error);
+      setErrorMessage("Wallet connection failed. Please try again.");
+      setTimeout(() => setErrorMessage(""), 5000);
     }
   };
 
   const checkResults = useCallback(
-    (ticket) => {
-      const winning = lastResults.find((result) =>
-        result.numbers.every((num, i) => num === ticket.numbers[i])
-      );
-      if (winning) {
-        alert(`Congratulations! You won 1 SOL from this ticket!`);
-      } else {
-        alert("No wins for this ticket yet. Better luck next time!");
+    async (ticket) => {
+      if (!program) return;
+      try {
+        const [resultPda] = web3.PublicKey.findProgramAddressSync(
+          [Buffer.from("result"), new BN(ticket.drawTime).toArrayLike(Buffer, "le", 8)],
+          PROGRAM_ID
+        );
+        const result = await program.account.result.fetch(resultPda);
+        if (result.isPublished && result.numbers.every((num, i) => num === ticket.numbers[i])) {
+          alert(`Congratulations! You won 1 SOL from this ticket!`);
+        } else {
+          alert("No wins for this ticket. Better luck next time!");
+        }
+      } catch (error) {
+        console.error("Check results failed:", error);
+        setErrorMessage("No results available for this draw yet.");
+        setTimeout(() => setErrorMessage(""), 5000);
       }
     },
-    [lastResults]
+    [program]
   );
+
+  if (isLoading) {
+    return <div className="loading-spinner">Loading game...</div>; // Show loading while initializing
+  }
 
   return (
     <div className="dodos-container">
@@ -238,14 +299,9 @@ export default function Dodos({ onBack }) {
               {Array.from({ length: 22 }, (_, i) => i + 1).map((number) => (
                 <button
                   key={number}
-                  className={`number-btn ${
-                    selectedNumbers.includes(number) ? "selected" : ""
-                  }`}
+                  className={`number-btn ${selectedNumbers.includes(number) ? "selected" : ""}`}
                   onClick={() => handleNumberSelect(number)}
-                  disabled={
-                    selectedNumbers.length === 2 &&
-                    !selectedNumbers.includes(number)
-                  }
+                  disabled={selectedNumbers.length === 2 && !selectedNumbers.includes(number)}
                   aria-label={`Select number ${number}`}
                 >
                   {number}
@@ -255,9 +311,7 @@ export default function Dodos({ onBack }) {
 
             <div className="selection-display">
               {selectedNumbers.length > 0 ? (
-                <p className="selected-numbers-text">
-                  Selected: {selectedNumbers.join(", ")}
-                </p>
+                <p className="selected-numbers-text">Selected: {selectedNumbers.join(", ")}</p>
               ) : (
                 <p className="select-numbers-prompt">Select 2 numbers (1-22)</p>
               )}
@@ -266,10 +320,7 @@ export default function Dodos({ onBack }) {
                 <button className="matrix-button" onClick={clearSelection}>
                   CLEAR
                 </button>
-                <button
-                  className="matrix-button"
-                  onClick={generateRandomSelection}
-                >
+                <button className="matrix-button" onClick={generateRandomSelection}>
                   RANDOM
                 </button>
               </div>
@@ -284,27 +335,20 @@ export default function Dodos({ onBack }) {
               <button
                 className="matrix-button purchase-btn"
                 onClick={purchaseTicket}
-                disabled={
-                  selectedNumbers.length !== 2 ||
-                  transactionPending ||
-                  !connected
-                }
+                disabled={selectedNumbers.length !== 2 || transactionPending || !publicKey}
                 aria-label={`Purchase ticket for ${ticketCost} SOL`}
               >
                 <span className="button-text">
-                  {transactionPending
-                    ? "PROCESSING..."
-                    : `PURCHASE (${ticketCost} SOL)`}
+                  {transactionPending ? "PROCESSING..." : `PURCHASE (${ticketCost} SOL)`}
                 </span>
               </button>
 
               {transactionPending && (
                 <div className="loading-spinner">Processing Transaction...</div>
               )}
-              {successMessage && (
-                <p className="success-message">{successMessage}</p>
-              )}
-              {!connected && (
+              {successMessage && <p className="success-message">{successMessage}</p>}
+              {errorMessage && <p className="error-message">{errorMessage}</p>}
+              {!publicKey && (
                 <div className="wallet-notice">
                   <p>Please connect your wallet to play.</p>
                   <button

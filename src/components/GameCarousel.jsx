@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useSwipeable } from "react-swipeable";
 import "../styles/game-carousel.css";
@@ -8,32 +8,7 @@ const WALLET_ADDRESS = "Ghxn7ree6MFQxC8hFTJ8Lo319xEZzqVFLcmDLKVFpPaa";
 const WALLET_ADDRESS2 = "AJsbig6jgfZhHKL9LDQjFGNhuJ8qdEsqK2Hdh3YAL7rn";
 
 /** —— small, self-contained copy component —— **/
-function CopyWalletRow({ address = WALLET_ADDRESS || WALLET_ADDRESS2}) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(address.trim());
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
-    } catch {
-      // fallback
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = address.trim();
-        ta.setAttribute("readonly", "");
-        ta.style.position = "absolute";
-        ta.style.left = "-9999px";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1400);
-      } catch {}
-    }
-  };
-
+const CopyWalletRow = React.memo(({ address, isCopied, onCopy }) => {
   return (
     <div className="copy-wallet-row" role="group" aria-label="wallet address">
       <div className="copy-wallet-text" title="wallet address">
@@ -42,16 +17,16 @@ function CopyWalletRow({ address = WALLET_ADDRESS || WALLET_ADDRESS2}) {
       <button
         type="button"
         className="copy-wallet-btn"
-        onClick={handleCopy}
+        onClick={onCopy}
         aria-live="polite"
         aria-label="copy wallet address"
       >
-        <span className="copy-icon" aria-hidden="true">{copied ? "✅" : "📋"}</span>
-        {copied ? "Copied" : "Copy"}
+        <span className="copy-icon" aria-hidden="true">{isCopied ? "✅" : "📋"}</span>
+        {isCopied ? "Copied" : "Copy"}
       </button>
     </div>
   );
-}
+});
 
 /** —— data —— **/
 const games = [
@@ -74,10 +49,10 @@ const games = [
         items: [
           "Funds will go directly into future development, community rewards, and ongoing improvements.",
           "Supporters may receive eligibility for upcoming airdrop.*",
-          "Solana address:",
+          "DONATION ADDRESS (SOLANA NETWORK):",
           WALLET_ADDRESS,
-          "Memecoin CA:",
-          WALLET_ADDRESS2,
+          // "Memecoin CA:",
+          // WALLET_ADDRESS2,
         ],
       },
       {
@@ -195,6 +170,26 @@ const games = [
 
 export default function GameCarousel({ onEnterGame }) {
   const [current, setCurrent] = useState(0);
+  const [copiedAddress, setCopiedAddress] = useState(null);
+
+  const handleCopy = useCallback((address) => () => {
+    navigator.clipboard.writeText(address.trim()).then(() => {
+      setCopiedAddress(address);
+      setTimeout(() => setCopiedAddress(null), 1400);
+    }).catch(() => {
+      const ta = document.createElement("textarea");
+      ta.value = address.trim();
+      ta.setAttribute("readonly", "");
+      ta.style.position = "absolute";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setCopiedAddress(address);
+      setTimeout(() => setCopiedAddress(null), 1400);
+    });
+  }, []);
 
   const nextGame = () => setCurrent((prev) => (prev + 1) % games.length);
   const prevGame = () => setCurrent((prev) => (prev - 1 + games.length) % games.length);
@@ -239,7 +234,11 @@ export default function GameCarousel({ onEnterGame }) {
                       if (isSupportSection && isWalletLine) {
                         return (
                           <li key={itemIndex} style={{ listStyle: "none", marginLeft: "-1.2rem" }}>
-                            <CopyWalletRow address={item.trim()} />
+                            <CopyWalletRow
+                              address={item.trim()}
+                              isCopied={copiedAddress === item.trim()}
+                              onCopy={handleCopy(item.trim())}
+                            />
                           </li>
                         );
                       }
@@ -264,7 +263,7 @@ export default function GameCarousel({ onEnterGame }) {
             </div>
           )}
 
-          {games[current].name.includes("DODOS1") && (
+          {games[current].name.includes("DODOS") && (
             <div className="wallet-btn">
               <button
                 className="matrix-button"

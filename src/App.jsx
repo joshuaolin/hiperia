@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback, useEffect } from "react"; // Updated to use hooks instead of Component
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 
@@ -16,6 +16,37 @@ import Runner from "./games/pre-game/Runner";
 import Footer from "./components/Footer";
 import "./styles/global.css";
 import "./styles/header.css";
+
+// Error Boundary Component (Converted to functional component with hooks)
+const ErrorBoundary = ({ children }) => {
+  const [hasError, setHasError] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const handleError = (error) => {
+      setHasError(true);
+      setError(error);
+    };
+    window.addEventListener("error", handleError);
+    return () => window.removeEventListener("error", handleError);
+  }, []);
+
+  if (hasError) {
+    return (
+      <div className="error-boundary">
+        <h1>Something went wrong: {error?.message}</h1>
+        <button
+          className="matrix-button"
+          onClick={() => window.location.reload()}
+          aria-label="Reload the page"
+        >
+          <span className="button-text">RELOAD</span>
+        </button>
+      </div>
+    );
+  }
+  return children;
+};
 
 function LandingPage() {
   return (
@@ -42,28 +73,43 @@ function LandingPage() {
   );
 }
 
-function ContentWrapper() {
+const ContentWrapper = React.memo(({ onEnterGame }) => {
   const { connected } = useWallet();
   const [currentView, setCurrentView] = useState(null);
+  const [isConnectedStable, setIsConnectedStable] = useState(connected);
 
-  const handleEnterGame = (gameName) => setCurrentView(gameName);
-  const handleBack = () => setCurrentView(null);
+  // Debounce wallet connection changes to prevent rapid re-renders
+  useEffect(() => {
+    const timer = setTimeout(() => setIsConnectedStable(connected), 100);
+    return () => clearTimeout(timer);
+  }, [connected]);
 
-  if (!connected) return <LandingPage />;
+  const handleEnterGameMemo = useCallback(
+    (gameName) => {
+      setCurrentView(gameName);
+    },
+    []
+  );
+
+  useEffect(() => {
+    onEnterGame(handleEnterGameMemo);
+  }, [onEnterGame, handleEnterGameMemo]);
+
+  if (!isConnectedStable) return <LandingPage />;
 
   switch (currentView) {
     case "Runner":
-      return <Runner onBack={handleBack} />;
+      return <Runner onBack={() => setCurrentView(null)} />;
     case "Dodos":
-      return <Dodos onBack={handleBack} />;
+      return <Dodos onBack={() => setCurrentView(null)} />;
     case "FruitGame":
-      return <FruitGame onBack={handleBack} />;
+      return <FruitGame onBack={() => setCurrentView(null)} />;
     case "AliceInWonderland":
-      return <AliceInWonderland onBack={handleBack} />;
+      return <AliceInWonderland onBack={() => setCurrentView(null)} />;
     default:
-      return <GameCarousel onEnterGame={handleEnterGame} />;
+      return <GameCarousel onEnterGame={handleEnterGameMemo} />;
   }
-}
+});
 
 export default function App() {
   return (
@@ -72,7 +118,9 @@ export default function App() {
       <ParticleCanvas />
       <Header />
       <main>
-        <ContentWrapper />
+        <ErrorBoundary>
+          <ContentWrapper onEnterGame={() => {}} /> {/* Initial empty callback */}
+        </ErrorBoundary>
       </main>
       <Footer />
     </div>
