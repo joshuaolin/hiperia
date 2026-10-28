@@ -1,5 +1,5 @@
 {
-  "address": "4BqH8D4WRxthkMBKjyFHoWVBbrogaCWJf8oC2tV2HGnR",
+  "address": "HDodgjBzz7Fo2irAU1ahf5X2arwr773ZcHXD3iSb7nmQ",
   "metadata": {
     "name": "hiperia_program",
     "version": "0.1.0",
@@ -7,20 +7,17 @@
   },
   "instructions": [
     {
+      "name": "configure_uat",
+      "discriminator": [228, 239, 221, 220, 67, 173, 61, 216],
+      "accounts": [
+        { "name": "config", "writable": true },
+        { "name": "admin", "signer": true }
+      ],
+      "args": [{ "name": "tester", "type": "pubkey" }]
+    },
+    {
       "name": "buy_ticket",
-      "docs": [
-        "User buys a ticket with two ordered numbers and a target draw_time"
-      ],
-      "discriminator": [
-        11,
-        24,
-        17,
-        193,
-        168,
-        116,
-        164,
-        169
-      ],
+      "discriminator": [11, 24, 17, 193, 168, 116, 164, 169],
       "accounts": [
         {
           "name": "config",
@@ -28,14 +25,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "value": [99, 111, 110, 102, 105, 103]
               }
             ]
           }
@@ -47,13 +37,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               }
             ]
           }
@@ -65,14 +49,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  116,
-                  105,
-                  99,
-                  107,
-                  101,
-                  116
-                ]
+                "value": [116, 105, 99, 107, 101, 116]
               },
               {
                 "kind": "account",
@@ -107,29 +84,14 @@
         {
           "name": "numbers",
           "type": {
-            "array": [
-              "u8",
-              2
-            ]
+            "array": ["u8", 2]
           }
         }
       ]
     },
     {
       "name": "initialize",
-      "docs": [
-        "Initialize program config"
-      ],
-      "discriminator": [
-        175,
-        175,
-        109,
-        31,
-        13,
-        152,
-        155,
-        237
-      ],
+      "discriminator": [175, 175, 109, 31, 13, 152, 155, 237],
       "accounts": [
         {
           "name": "config",
@@ -138,14 +100,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "value": [99, 111, 110, 102, 105, 103]
               }
             ]
           }
@@ -157,13 +112,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               }
             ]
           }
@@ -191,19 +140,7 @@
     },
     {
       "name": "publish_result",
-      "docs": [
-        "Publish result numbers for a draw_time (demo RNG, replace with oracle in production)"
-      ],
-      "discriminator": [
-        82,
-        242,
-        179,
-        114,
-        16,
-        166,
-        232,
-        252
-      ],
+      "discriminator": [82, 242, 179, 114, 16, 166, 232, 252],
       "accounts": [
         {
           "name": "config",
@@ -211,14 +148,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "value": [99, 111, 110, 102, 105, 103]
               }
             ]
           }
@@ -229,13 +159,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               }
             ]
           }
@@ -247,14 +171,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  114,
-                  101,
-                  115,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [114, 101, 115, 117, 108, 116]
               },
               {
                 "kind": "arg",
@@ -282,19 +199,7 @@
     },
     {
       "name": "settle_ticket",
-      "docs": [
-        "Settle a ticket within the settlement window"
-      ],
-      "discriminator": [
-        201,
-        80,
-        119,
-        145,
-        208,
-        184,
-        168,
-        70
-      ],
+      "discriminator": [201, 80, 119, 145, 208, 184, 168, 70],
       "accounts": [
         {
           "name": "config",
@@ -302,14 +207,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
+                "value": [99, 111, 110, 102, 105, 103]
               }
             ]
           }
@@ -321,13 +219,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               }
             ]
           }
@@ -339,14 +231,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  116,
-                  105,
-                  99,
-                  107,
-                  101,
-                  116
-                ]
+                "value": [116, 105, 99, 107, 101, 116]
               },
               {
                 "kind": "account",
@@ -367,14 +252,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  114,
-                  101,
-                  115,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [114, 101, 115, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -400,109 +278,37 @@
   "accounts": [
     {
       "name": "Config",
-      "discriminator": [
-        155,
-        12,
-        170,
-        224,
-        30,
-        250,
-        204,
-        130
-      ]
+      "discriminator": [155, 12, 170, 224, 30, 250, 204, 130]
     },
     {
       "name": "ResultAccount",
-      "discriminator": [
-        164,
-        48,
-        92,
-        166,
-        25,
-        84,
-        42,
-        186
-      ]
+      "discriminator": [164, 48, 92, 166, 25, 84, 42, 186]
     },
     {
       "name": "Ticket",
-      "discriminator": [
-        41,
-        228,
-        24,
-        165,
-        78,
-        90,
-        235,
-        200
-      ]
+      "discriminator": [41, 228, 24, 165, 78, 90, 235, 200]
     },
     {
       "name": "Vault",
-      "discriminator": [
-        211,
-        8,
-        232,
-        43,
-        2,
-        152,
-        117,
-        119
-      ]
+      "discriminator": [211, 8, 232, 43, 2, 152, 117, 119]
     }
   ],
   "events": [
     {
       "name": "Initialized",
-      "discriminator": [
-        208,
-        213,
-        115,
-        98,
-        115,
-        82,
-        201,
-        209
-      ]
+      "discriminator": [208, 213, 115, 98, 115, 82, 201, 209]
     },
     {
       "name": "ResultPublished",
-      "discriminator": [
-        183,
-        18,
-        69,
-        197,
-        29,
-        217,
-        176,
-        185
-      ]
+      "discriminator": [183, 18, 69, 197, 29, 217, 176, 185]
     },
     {
       "name": "TicketPurchased",
-      "discriminator": [
-        108,
-        59,
-        246,
-        95,
-        84,
-        145,
-        13,
-        71
-      ]
+      "discriminator": [108, 59, 246, 95, 84, 145, 13, 71]
     },
     {
       "name": "TicketSettled",
-      "discriminator": [
-        72,
-        40,
-        13,
-        3,
-        184,
-        159,
-        190,
-        211
-      ]
+      "discriminator": [72, 40, 13, 3, 184, 159, 190, 211]
     }
   ],
   "errors": [
@@ -575,6 +381,36 @@
       "code": 6013,
       "name": "InvalidPayout",
       "msg": "Invalid payout amount"
+    },
+    {
+      "code": 6014,
+      "name": "InsufficientVaultFunds",
+      "msg": "The vault cannot pay this prize while preserving its rent reserve"
+    },
+    {
+      "code": 6015,
+      "name": "ArithmeticOverflow",
+      "msg": "The account balance would overflow"
+    },
+    {
+      "code": 6016,
+      "name": "UnauthorizedUatWallet",
+      "msg": "This UAT program only accepts the configured tester or UAT administrator"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidUatTester",
+      "msg": "The UAT tester must be a nonzero wallet address"
+    },
+    {
+      "code": 6018,
+      "name": "InvalidVaultReserve",
+      "msg": "The vault liability reserve is invalid or underfunded"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidTicketReserve",
+      "msg": "The ticket liability reserve marker is invalid"
     }
   ],
   "types": [
@@ -602,10 +438,7 @@
           {
             "name": "padding",
             "type": {
-              "array": [
-                "u8",
-                32
-              ]
+              "array": ["u8", 32]
             }
           }
         ]
@@ -639,10 +472,7 @@
           {
             "name": "numbers",
             "type": {
-              "array": [
-                "u8",
-                2
-              ]
+              "array": ["u8", 2]
             }
           },
           {
@@ -656,10 +486,7 @@
           {
             "name": "padding",
             "type": {
-              "array": [
-                "u8",
-                32
-              ]
+              "array": ["u8", 32]
             }
           }
         ]
@@ -677,10 +504,7 @@
           {
             "name": "numbers",
             "type": {
-              "array": [
-                "u8",
-                2
-              ]
+              "array": ["u8", 2]
             }
           }
         ]
@@ -718,19 +542,13 @@
           {
             "name": "numbers",
             "type": {
-              "array": [
-                "u8",
-                2
-              ]
+              "array": ["u8", 2]
             }
           },
           {
             "name": "padding",
             "type": {
-              "array": [
-                "u8",
-                32
-              ]
+              "array": ["u8", 32]
             }
           }
         ]
@@ -756,10 +574,7 @@
           {
             "name": "numbers",
             "type": {
-              "array": [
-                "u8",
-                2
-              ]
+              "array": ["u8", 2]
             }
           },
           {
@@ -789,10 +604,7 @@
           {
             "name": "numbers",
             "type": {
-              "array": [
-                "u8",
-                2
-              ]
+              "array": ["u8", 2]
             }
           },
           {
@@ -814,10 +626,7 @@
           {
             "name": "padding",
             "type": {
-              "array": [
-                "u8",
-                32
-              ]
+              "array": ["u8", 32]
             }
           }
         ]

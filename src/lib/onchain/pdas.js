@@ -1,38 +1,50 @@
+import { Buffer } from "buffer";
 import { PublicKey } from "@solana/web3.js";
-import { PROGRAM_ID } from "./idl";
-import { Buffer } from "buffer"; // <- important polyfill import
+import { PROGRAM_ID } from "./idl.js";
 
-const CONFIG_SEED = Buffer.from("config");
-const VAULT_SEED  = Buffer.from("vault");
-const TICKET_SEED = Buffer.from("ticket");
-const RESULT_SEED = Buffer.from("result");
-
-export const seeds = { CONFIG_SEED, VAULT_SEED, TICKET_SEED, RESULT_SEED };
-
-function u64LeBytes(nBig) {
-  const b = Buffer.alloc(8);
-  b.writeBigInt64LE(BigInt(nBig));
-  return b;
+function toInteger(value) {
+  if (typeof value === "number" && !Number.isSafeInteger(value))
+    throw new RangeError("Seed must be a safe integer.");
+  if (value == null || !/^-?\d+$/.test(String(value)))
+    throw new TypeError("Seed must be an integer.");
+  return BigInt(String(value));
 }
 
-export function pdaConfig(programId = new PublicKey(PROGRAM_ID)) {
-  return PublicKey.findProgramAddressSync([CONFIG_SEED], programId)[0];
+export function u64LeBytes(value) {
+  const integer = toInteger(value);
+  if (integer < 0n || integer > (1n << 64n) - 1n)
+    throw new RangeError("Nonce must fit an unsigned 64-bit integer.");
+  const bytes = Buffer.alloc(8);
+  bytes.writeBigUInt64LE(integer);
+  return bytes;
 }
 
-export function pdaVault(programId = new PublicKey(PROGRAM_ID)) {
-  return PublicKey.findProgramAddressSync([VAULT_SEED], programId)[0];
+export function i64LeBytes(value) {
+  const integer = toInteger(value);
+  if (integer < -(1n << 63n) || integer > (1n << 63n) - 1n)
+    throw new RangeError("Draw time must fit a signed 64-bit integer.");
+  const bytes = Buffer.alloc(8);
+  bytes.writeBigInt64LE(integer);
+  return bytes;
 }
 
-export function pdaTicket(userPk, nonceBig, programId = new PublicKey(PROGRAM_ID)) {
-  return PublicKey.findProgramAddressSync(
-    [TICKET_SEED, userPk.toBuffer(), u64LeBytes(nonceBig)],
-    programId
-  )[0];
-}
-
-export function pdaResult(drawTimeBig, programId = new PublicKey(PROGRAM_ID)) {
-  return PublicKey.findProgramAddressSync(
-    [RESULT_SEED, u64LeBytes(drawTimeBig)],
-    programId
-  )[0];
-}
+export const getConfigPda = (programId = PROGRAM_ID) =>
+  PublicKey.findProgramAddressSync(
+    [Buffer.from("config")],
+    new PublicKey(programId),
+  );
+export const getVaultPda = (programId = PROGRAM_ID) =>
+  PublicKey.findProgramAddressSync(
+    [Buffer.from("vault")],
+    new PublicKey(programId),
+  );
+export const getTicketPda = (user, nonce, programId = PROGRAM_ID) =>
+  PublicKey.findProgramAddressSync(
+    [Buffer.from("ticket"), new PublicKey(user).toBuffer(), u64LeBytes(nonce)],
+    new PublicKey(programId),
+  );
+export const getResultPda = (drawTime, programId = PROGRAM_ID) =>
+  PublicKey.findProgramAddressSync(
+    [Buffer.from("result"), i64LeBytes(drawTime)],
+    new PublicKey(programId),
+  );

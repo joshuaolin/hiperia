@@ -1,47 +1,54 @@
-import React from "react";
+import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 
-import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
+import {
+  ConnectionProvider,
+  ConnectionContext,
+  WalletProvider,
+} from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import { PhantomWalletAdapter, SolflareWalletAdapter } from "@solana/wallet-adapter-wallets";
-import { BackpackWalletAdapter } from "@solana/wallet-adapter-backpack";
+import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
+import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
 
 import { Buffer } from "buffer";
+import { UatConnection } from "./lib/uatConnection.js";
 import "@solana/wallet-adapter-react-ui/styles.css";
 import "./styles/global.css";
 
 if (!window.Buffer) window.Buffer = Buffer;
 if (!globalThis.process) globalThis.process = { env: {} };
 
-// Set Devnet endpoint explicitly
-const endpoint = import.meta?.env?.VITE_SOLANA_RPC || "https://api.devnet.solana.com";
-console.log("Using RPC endpoint:", endpoint);
+const endpoint =
+  import.meta.env.VITE_SOLANA_RPC || "https://api.devnet.solana.com";
+const useUatProxy =
+  import.meta.env.VITE_APP_ENV === "uat" &&
+  endpoint === "https://api.devnet.solana.com" &&
+  window.location.protocol === "https:";
+const uatConnection = useUatProxy ? new UatConnection(endpoint) : null;
+const ConnectionBoundary = useUatProxy
+  ? ({ children }) => (
+      <ConnectionContext.Provider value={{ connection: uatConnection }}>
+        {children}
+      </ConnectionContext.Provider>
+    )
+  : ({ children }) => (
+      <ConnectionProvider endpoint={endpoint}>{children}</ConnectionProvider>
+    );
 
-// Initialize wallets with Devnet
 const wallets = [
   new PhantomWalletAdapter({ network: "devnet" }),
   new SolflareWalletAdapter({ network: "devnet" }),
-  new BackpackWalletAdapter({ network: "devnet" }),
 ];
 
-// Optional: Add a check to avoid EVM interference
-const disableEvmWallets = () => {
-  if (window.ethereum && !window.solana) {
-    console.warn("EVM wallet detected. Disabling to prioritize Solana. Consider disabling EVM extensions.");
-    delete window.ethereum;
-  }
-};
-disableEvmWallets();
-
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <ConnectionProvider endpoint={endpoint}>
+  <StrictMode>
+    <ConnectionBoundary>
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
           <App />
         </WalletModalProvider>
       </WalletProvider>
-    </ConnectionProvider>
-  </React.StrictMode>
+    </ConnectionBoundary>
+  </StrictMode>,
 );

@@ -1,0 +1,10 @@
+/*
+!src
+!public
+!api
+!/index.html
+!/package.json
+!/package-lock.json
+!/vite.config.js
+!/vercel.json
+src/**/*.test.js

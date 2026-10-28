@@ -1,0 +1,142 @@
+.dodos-guide {
+  padding: 23px;
+  min-width: 0;
+}
+.dodos-guide-heading .eyebrow {
+  color: #8fc7b8;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+.dodos-guide-heading h2 {
+  margin-top: 8px;
+  font-size: 17px;
+  letter-spacing: -0.3px;
+}
+.dodos-guide-heading > p:last-child {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.dodos-guide-facts {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin-top: 22px;
+  font-size: 11px;
+  line-height: 1.65;
+}
+.dodos-guide-facts caption {
+  text-align: left;
+  color: #bdd0d4;
+  font-weight: 600;
+  padding-bottom: 6px;
+}
+.dodos-guide-facts tr {
+  border-bottom: 1px solid var(--border);
+}
+.dodos-guide-facts th,
+.dodos-guide-facts td {
+  padding: 10px 0;
+  vertical-align: top;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.dodos-guide-facts th {
+  width: 40%;
+  padding-right: 12px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.dodos-guide-facts td {
+  color: #c4d8dc;
+}
+.dodos-guide-facts small {
+  display: block;
+  margin-top: 3px;
+  color: #8ba7af;
+  font-size: 10px;
+}
+.dodos-guide-steps {
+  display: grid;
+  gap: 20px;
+  padding: 0;
+  margin: 25px 0 0;
+  list-style: none;
+}
+.dodos-guide-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+.dodos-guide-steps li > span {
+  display: grid;
+  place-items: center;
+  flex: 0 0 27px;
+  height: 27px;
+  border: 1px solid #31534b;
+  border-radius: 7px;
+  background: #18312e;
+  color: var(--mint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.dodos-guide-steps h3,
+.dodos-guide-test h3 {
+  color: #c7dadc;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.dodos-guide-steps p,
+.dodos-guide-details p,
+.dodos-guide-test p {
+  margin-top: 5px;
+  color: #91abb3;
+  font-size: 11px;
+  line-height: 1.8;
+}
+.dodos-guide strong {
+  color: #c2d7d9;
+  font-weight: 550;
+}
+.dodos-guide-details {
+  margin-top: 23px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding-block: 13px;
+}
+.dodos-guide-details summary {
+  cursor: pointer;
+  color: #aed7cd;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.dodos-guide-details > div {
+  padding-top: 8px;
+}
+.dodos-guide-details p + p,
+.dodos-guide-test p + p {
+  margin-top: 9px;
+}
+.dodos-guide-test {
+  margin-top: 20px;
+  padding: 13px;
+  border: 1px solid #3f4132;
+  border-radius: 7px;
+  background: #25291f;
+}
+.dodos-guide-test h3 {
+  color: #dfcda2;
+}
+.dodos-guide-test p {
+  color: #b2b59d;
+}
+.dodos-guide-test p:first-child {
+  margin-top: 0;
+}
+@media (max-width: 420px) {
+  .dodos-guide {
+    padding: 20px;
+  }
+}

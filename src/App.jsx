@@ -1,128 +1,93 @@
-import React, { useState, useCallback, useEffect } from "react"; // Updated to use hooks instead of Component
-import { useWallet } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-
-import MatrixBackground from "./components/MatrixBackground";
-import ParticleCanvas from "./components/ParticleCanvas";
+import { useEffect, useState } from "react";
 import Header from "./components/Header";
-import GameCarousel from "./components/GameCarousel";
-
-// NOTE: path matches your structure
-import Dodos from "./games/dodos/Dodos";
-import FruitGame from "./games/fruit-game/FruitGame";
-import AliceInWonderland from "./games/alice/AliceInWonderland";
-import Runner from "./games/pre-game/Runner";
-
 import Footer from "./components/Footer";
-import "./styles/global.css";
-import "./styles/header.css";
-
-// Error Boundary Component (Converted to functional component with hooks)
-const ErrorBoundary = ({ children }) => {
-  const [hasError, setHasError] = useState(false);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const handleError = (error) => {
-      setHasError(true);
-      setError(error);
-    };
-    window.addEventListener("error", handleError);
-    return () => window.removeEventListener("error", handleError);
-  }, []);
-
-  if (hasError) {
-    return (
-      <div className="error-boundary">
-        <h1>Something went wrong: {error?.message}</h1>
-        <button
-          className="matrix-button"
-          onClick={() => window.location.reload()}
-          aria-label="Reload the page"
-        >
-          <span className="button-text">RELOAD</span>
-        </button>
-      </div>
-    );
-  }
-  return children;
-};
-
-function LandingPage() {
-  return (
-    <div className="header-container">
-      <div className="header-content">
-        <div className="ticker">
-          <span className="ticker-text hiperia-ticker-text">HIPERIA</span>
-        </div>
-        <p className="header-description">
-          A decentralized micro-gaming ecosystem designed to be
-          self-sustaining for retailers, featuring transparent and
-          on-chain verified draw.
-        </p>
-        <div className="wallet-btn">
-          <WalletMultiButton
-            className="start-game-button wallet-adapter-button matrix-button"
-            aria-label="Connect Wallet to Start Game"
-          >
-            START GAME
-          </WalletMultiButton>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const ContentWrapper = React.memo(({ onEnterGame }) => {
-  const { connected } = useWallet();
-  const [currentView, setCurrentView] = useState(null);
-  const [isConnectedStable, setIsConnectedStable] = useState(connected);
-
-  // Debounce wallet connection changes to prevent rapid re-renders
-  useEffect(() => {
-    const timer = setTimeout(() => setIsConnectedStable(connected), 100);
-    return () => clearTimeout(timer);
-  }, [connected]);
-
-  const handleEnterGameMemo = useCallback(
-    (gameName) => {
-      setCurrentView(gameName);
-    },
-    []
-  );
-
-  useEffect(() => {
-    onEnterGame(handleEnterGameMemo);
-  }, [onEnterGame, handleEnterGameMemo]);
-
-  if (!isConnectedStable) return <LandingPage />;
-
-  switch (currentView) {
-    case "Runner":
-      return <Runner onBack={() => setCurrentView(null)} />;
-    case "Dodos":
-      return <Dodos onBack={() => setCurrentView(null)} />;
-    case "FruitGame":
-      return <FruitGame onBack={() => setCurrentView(null)} />;
-    case "AliceInWonderland":
-      return <AliceInWonderland onBack={() => setCurrentView(null)} />;
-    default:
-      return <GameCarousel onEnterGame={handleEnterGameMemo} />;
-  }
-});
+import ErrorBoundary from "./components/ErrorBoundary";
+import Dodos from "./games/dodos/Dodos";
 
 export default function App() {
+  const [activeSection, setActiveSection] = useState(() =>
+    window.location.hash === "#support" ? "support" : "dodos",
+  );
+
+  useEffect(() => {
+    const updateSection = () => {
+      setActiveSection(
+        window.location.hash === "#support" ? "support" : "dodos",
+      );
+    };
+    window.addEventListener("hashchange", updateSection);
+    return () => window.removeEventListener("hashchange", updateSection);
+  }, []);
+
   return (
     <div className="app">
-      <MatrixBackground />
-      <ParticleCanvas />
-      <Header />
-      <main>
-        <ErrorBoundary>
-          <ContentWrapper onEnterGame={() => {}} /> {/* Initial empty callback */}
-        </ErrorBoundary>
-      </main>
-      <Footer />
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
+      <aside className="sidebar" aria-label="Main navigation">
+        <a className="brand" href="#dodos" aria-label="Hiperia home">
+          <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+            <path
+              d="M5 7v18m22-18v18M5 16h22M12 10l8 12"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+          </svg>
+          hiperia<span className="brand-period">.</span>
+        </a>
+        <div className="sidebar-section-label">PLAY</div>
+        <nav className="sidebar-nav">
+          <a
+            className={`nav-item${activeSection === "dodos" ? " nav-item-active" : ""}`}
+            href="#dodos"
+            aria-current={activeSection === "dodos" ? "location" : undefined}
+          >
+            <span className="nav-symbol" aria-hidden="true">
+              ◈
+            </span>
+            Dodos
+            {activeSection === "dodos" && (
+              <span className="nav-active-dot" aria-hidden="true" />
+            )}
+          </a>
+          <a
+            className={`nav-item${activeSection === "support" ? " nav-item-active" : ""}`}
+            href="#support"
+            aria-current={activeSection === "support" ? "location" : undefined}
+          >
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path
+                d="m10 16-6.4-6.2a3.6 3.6 0 0 1 5.1-5.1L10 6l1.3-1.3a3.6 3.6 0 0 1 5.1 5.1L10 16Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+            </svg>
+            Support Hiperia
+            {activeSection === "support" && (
+              <span className="nav-active-dot" aria-hidden="true" />
+            )}
+          </a>
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="sidebar-network">
+            <span className="status-dot" />
+            Test networks only
+          </div>
+          <p>Explore with test SOL.</p>
+          <a href="https://faucet.solana.com/" target="_blank" rel="noreferrer">
+            Get test SOL <span aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </aside>
+      <div className="app-content">
+        <Header activeSection={activeSection} />
+        <main id="main-content" className="main-content">
+          <ErrorBoundary>
+            <Dodos />
+          </ErrorBoundary>
+        </main>
+        <Footer />
+      </div>
     </div>
   );
 }

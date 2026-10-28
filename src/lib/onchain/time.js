@@ -1,21 +1,74 @@
-// next draw: 14:00 or 16:00 in UTC+8, return unix seconds (UTC)
-export function nextDrawTimeUtcSeconds(now = new Date()) {
-  const tz = "Asia/Shanghai";
-  const asTz = new Date(now.toLocaleString("en-US", { timeZone: tz }));
-  const drawHours = [14, 16];
+export class DrawSchedule {
+  upcomingDrawTimes(now = Date.now()) {
+    if (!Number.isFinite(now))
+      throw new TypeError("Current time must be a finite timestamp.");
+    const day = 86_400_000;
+    const offset = 28_800_000;
+    const start = Math.floor((now + offset) / day) * day - offset;
+    return [0, 1]
+      .flatMap((days) =>
+        [14, 16].map((hour) => start + days * day + hour * 3_600_000),
+      )
+      .filter((draw) => draw > now && draw <= now + day)
+      .map((draw) => Math.floor(draw / 1000));
+  }
 
-  let next = new Date(asTz);
-  for (const h of drawHours) {
-    const d = new Date(asTz);
-    d.setHours(h, 0, 0, 0);
-    if (d > asTz) { next = d; break; }
+  nextDrawTime(now = Date.now()) {
+    return this.upcomingDrawTimes(now)[0];
   }
-  if (next <= asTz) {
-    next = new Date(asTz);
-    next.setDate(asTz.getDate() + 1);
-    next.setHours(drawHours[0], 0, 0, 0);
+
+  format(drawTime) {
+    return new Intl.DateTimeFormat("en-PH", {
+      timeZone: "Asia/Manila",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(Number(drawTime) * 1000));
   }
-  // convert that wall time (UTC+8) to epoch seconds (UTC)
-  const utcIso = new Date(next.toLocaleString("en-US", { timeZone: "UTC" })).toISOString();
-  return Math.floor(new Date(utcIso).getTime() / 1000);
+}
+
+const schedule = new DrawSchedule();
+export const getNextDrawTime = (now = Date.now()) => schedule.nextDrawTime(now);
+export const getUpcomingDrawTimes = (now = Date.now()) =>
+  schedule.upcomingDrawTimes(now);
+export const formatDrawTime = (time) => schedule.format(time);
+export function isDailyDrawTime(drawTime) {
+  return (
+    Number.isSafeInteger(drawTime) &&
+    drawTime > 0 &&
+    [21_600, 28_800].includes(drawTime % 86_400)
+  );
+}
+export function getUatDrawTime(now = Date.now(), delay = 60) {
+  if (!Number.isFinite(now))
+    throw new TypeError("Current time must be a finite timestamp.");
+  if (!Number.isSafeInteger(delay) || delay < 1)
+    throw new RangeError(
+      "The test draw delay must be a positive whole number of seconds.",
+    );
+  const candidate = Math.floor(now / 1000) + delay;
+  const drawTime = isDailyDrawTime(candidate) ? candidate + 1 : candidate;
+  if (!Number.isSafeInteger(drawTime))
+    throw new RangeError("The test draw timestamp must be a safe integer.");
+  return drawTime;
+}
+export function getSelectedDrawTime(choice, now = Date.now()) {
+  if (!Number.isFinite(now))
+    throw new TypeError("Current time must be a finite timestamp.");
+  const currentSeconds = Math.floor(now / 1000);
+  const drawTime = choice === "quick" ? getUatDrawTime(now) : Number(choice);
+  if (!Number.isSafeInteger(drawTime) || drawTime > currentSeconds + 86_400)
+    throw new RangeError("Choose a draw within the next 24 hours.");
+  if (drawTime <= currentSeconds)
+    throw new RangeError(
+      "Your selected draw has started. Choose the next draw; your ticket will not be moved automatically.",
+    );
+  return drawTime;
+}
+export function formatCountdown(seconds) {
+  const remaining = Math.max(0, Math.ceil(seconds));
+  const hours = Math.floor(remaining / 3600);
+  const minutes = Math.floor((remaining % 3600) / 60);
+  return `${hours ? `${hours}h ` : ""}${minutes}m ${remaining % 60}s`;
 }

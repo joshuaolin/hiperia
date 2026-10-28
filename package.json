@@ -7,25 +7,40 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "test": "node scripts/test.js",
+    "preview": "vite preview",
+    "program:prepare": "node scripts/prepare-program.js",
+    "program:sync-idl": "node scripts/sync-idl.js",
+    "program:initialize": "node hiperia_program/scripts/initialize.js",
+    "program:configure-uat": "node hiperia_program/scripts/configure-uat.js",
+    "program:fund": "node hiperia_program/scripts/fund.js",
+    "program:demo": "node hiperia_program/scripts/demo.js",
+    "test:contract": "node scripts/test-contract.js",
+    "format": "prettier --write \"src/**/*.{js,jsx,css,json}\" \"scripts/**/*.js\" \"hiperia_program/{scripts,tests}/**/*.js\" \"dev/**/*.{jsx,html}\" *.js *.json *.md index.html",
+    "test:ui": "node scripts/test-ui.js",
+    "test:ui:uat": "node scripts/test-ui-uat.js",
+    "setup:solana:windows": "node scripts/install-solana-windows.js",
+    "program:create-deployer": "node scripts/create-deployer.js",
+    "program:build:remote": "node scripts/build-program-remote.js",
+    "program:verify-abi": "node scripts/verify-program-abi.js",
+    "program:test-live": "node scripts/test-live-dodos.js",
+    "program:test-uat": "node scripts/test-uat-contract.js"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
-    "@solana/wallet-adapter-backpack": "^0.1.14",
+    "@solana/wallet-adapter-phantom": "^0.9.28",
     "@solana/wallet-adapter-react": "^0.15.39",
     "@solana/wallet-adapter-react-ui": "^0.9.39",
-    "@solana/wallet-adapter-wallets": "^0.19.37",
+    "@solana/wallet-adapter-solflare": "^0.6.32",
     "@solana/web3.js": "^1.98.4",
-    "framer-motion": "^12.23.12",
-    "lodash": "^4.17.21",
-    "prop-types": "^15.8.1",
+    "bn.js": "^5.2.2",
+    "buffer": "^6.0.3",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "react-swipeable": "^7.0.2",
-    "react-window": "^1.8.11"
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
+    "@playwright/test": "^1.64.1",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.0",
@@ -33,10 +48,13 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
+    "prettier": "^3.6.2",
     "vite": "^7.1.2"
   },
-  "description": "This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.",
-  "main": "eslint.config.js",
+  "description": "Hiperia wallet-connected micro-games and Solana devnet client.",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/joshuaolin/hiperia.git"

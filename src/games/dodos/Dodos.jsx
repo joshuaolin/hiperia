@@ -1,404 +1,554 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { debounce } from "lodash";
-import { FixedSizeList } from "react-window";
-import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { Program, AnchorProvider, web3, BN } from "@coral-xyz/anchor";
-import idl from "../../idl/hiperia_program.json";
+import DonationCard from "../../components/DonationCard";
+import TicketList from "../../components/TicketList";
+import DrawResults from "../../components/DrawResults.jsx";
+import DodosGuide from "../../components/DodosGuide";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { useDodosGame } from "./useDodosGame.js";
+import {
+  formatDrawTime,
+  formatCountdown,
+  getNextDrawTime,
+} from "../../lib/onchain/time.js";
+import { explorerAccountUrl } from "../../lib/explorer.js";
+import {
+  NUMBER_OPTIONS,
+  DAILY_PAYOUT_MULTIPLIER,
+} from "../../lib/onchain/rules.js";
 import "./dodos.css";
 
-// Use your Devnet PROGRAM_ID
-const PROGRAM_ID = new web3.PublicKey("4BqH8D4WRxthkMBKjyFHoWVBbrogaCWJf8oC2tV2HGnR");
+function RefreshIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path
+        d="M16 8a6.3 6.3 0 1 0-.5 5M16 3v5h-5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
-const TicketCard = React.memo(({ ticket, onCheckResults }) => (
-  <div className="ticket-card">
-    <p className="ticket-numbers">{ticket.numbers.join(" - ")}</p>
-    <p className="ticket-time">Purchased: {new Date(ticket.purchaseTime * 1000).toLocaleString()}</p>
-    <button
-      className="matrix-button check-results-btn"
-      onClick={() => onCheckResults(ticket)}
-      aria-label={`Check results for ticket ${ticket.id}`}
+function NumberPair({ numbers, placeholder = false }) {
+  return (
+    <span
+      className={`number-pair ${placeholder ? "number-pair-placeholder" : ""}`}
     >
-      <span className="button-text">CHECK RESULTS</span>
-    </button>
-  </div>
-));
-
-const TicketList = ({ tickets, onCheckResults }) => (
-  <FixedSizeList
-    height={200}
-    width="100%"
-    itemCount={tickets.length}
-    itemSize={110}
-    className="tickets-grid"
-  >
-    {({ index, style }) => (
-      <div style={style}>
-        <TicketCard ticket={tickets[index]} onCheckResults={onCheckResults} />
-      </div>
-    )}
-  </FixedSizeList>
-);
-
-export default function Dodos({ onBack }) {
-  const { connection } = useConnection();
-  const { publicKey, connect, signTransaction } = useWallet();
-  const [selectedNumbers, setSelectedNumbers] = useState([]);
-  const [tickets, setTickets] = useState([]);
-  const [nextDraw, setNextDraw] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
-  const [transactionPending, setTransactionPending] = useState(false);
-  const [lastResults, setLastResults] = useState([]);
-  const [ticketCost, setTicketCost] = useState(0.0072);
-  const [program, setProgram] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    console.log("Initializing program:", { publicKey, signTransaction, connection });
-    if (!publicKey || !signTransaction) {
-      console.log("Missing publicKey or signTransaction, skipping initialization");
-      setIsLoading(true);
-      return;
-    }
-
-    const provider = new AnchorProvider(
-      connection,
-      { publicKey, signTransaction },
-      { commitment: "confirmed", preflightCommitment: "confirmed" }
-    );
-    console.log("Provider created:", provider);
-
-    console.log("IDL loaded:", JSON.stringify(idl, null, 2));
-
-    try {
-      const newProgram = new Program(idl, PROGRAM_ID, provider);
-      console.log("Program constructed:", newProgram);
-      // Test config account existence
-      const [configPda] = web3.PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
-      newProgram.account.config.fetch(configPda).then(
-        () => {
-          console.log("Config account found!");
-          setProgram(newProgram);
-        },
-        (err) => {
-          console.error("Config fetch failed, program may need initialization:", err.message);
-          setProgram(newProgram); // Set anyway to allow manual testing
-          setErrorMessage("Program may need initialization. Check console.");
-          setTimeout(() => setErrorMessage(""), 5000);
-        }
-      );
-      setIsLoading(false);
-    } catch (error) {
-      console.error("Failed to initialize program:", error.message, error.stack);
-      setErrorMessage(`Error initializing program: ${error.message}. Check console.`);
-      setTimeout(() => setErrorMessage(""), 5000);
-      setIsLoading(false);
-    }
-  }, [connection, publicKey, signTransaction]);
-
-  useEffect(() => {
-    const savedTickets = localStorage.getItem("dodosTickets");
-    if (savedTickets) setTickets(JSON.parse(savedTickets));
-
-    const fetchConfig = async () => {
-      if (!program) {
-        console.log("Program not available, skipping config fetch. IDL:", JSON.stringify(idl, null, 2));
-        return;
-      }
-      try {
-        const [configPda] = web3.PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
-        const config = await program.account.config.fetch(configPda);
-        setTicketCost(config.ticketCostLamports.toNumber() / 1e9);
-        console.log("Fetched ticket cost:", ticketCost);
-      } catch (error) {
-        console.error("Failed to fetch config:", error.message);
-        setErrorMessage("Failed to fetch config. Ensure program is initialized on Devnet.");
-        setTimeout(() => setErrorMessage(""), 5000);
-      }
-    };
-    fetchConfig();
-  }, [program]);
-
-  const calculateNextDrawTime = useCallback(() => {
-    const now = new Date();
-    const asiaTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
-    const drawTimes = [14, 16];
-    let nextDrawTime = new Date(asiaTime);
-
-    for (const hour of drawTimes) {
-      const drawTime = new Date(asiaTime);
-      drawTime.setHours(hour, 0, 0, 0);
-      if (drawTime > asiaTime) {
-        nextDrawTime = drawTime;
-        break;
-      }
-    }
-
-    if (nextDrawTime <= asiaTime) {
-      nextDrawTime.setDate(asiaTime.getDate() + 1);
-      nextDrawTime.setHours(drawTimes[0], 0, 0, 0);
-    }
-
-    return {
-      display: nextDrawTime.toLocaleString("en-US", {
-        timeZone: "Asia/Shanghai",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }).replace(",", ""),
-      unix: Math.floor(nextDrawTime.getTime() / 1000),
-    };
-  }, []);
-
-  const calculateNextDrawCountdown = useCallback(() => {
-    const now = new Date();
-    const nextDrawTime = new Date(calculateNextDrawTime().unix * 1000);
-    const diff = nextDrawTime - now;
-
-    if (diff <= 0) return "Drawing in progress...";
-
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  }, [calculateNextDrawTime]);
-
-  useEffect(() => {
-    const debouncedUpdateNextDraw = debounce(() => setNextDraw(calculateNextDrawCountdown()), 1000);
-    debouncedUpdateNextDraw();
-    const interval = setInterval(debouncedUpdateNextDraw, 1000);
-    return () => {
-      debouncedUpdateNextDraw.cancel();
-      clearInterval(interval);
-    };
-  }, [calculateNextDrawCountdown]);
-
-  const handleNumberSelect = useCallback(
-    debounce((number) => {
-      setSelectedNumbers((prev) => {
-        if (prev.includes(number)) return prev.filter((n) => n !== number);
-        if (prev.length < 2 && !prev.includes(number)) return [...prev, number];
-        return prev;
-      });
-    }, 100),
-    []
+      {[0, 1].map((index) => (
+        <span key={index}>
+          {numbers[index] === undefined
+            ? "—"
+            : String(numbers[index]).padStart(2, "0")}
+        </span>
+      ))}
+    </span>
   );
+}
 
-  const clearSelection = () => setSelectedNumbers([]);
-  const generateRandomSelection = () => {
-    clearSelection();
-    const newSelection = [];
-    for (let i = 0; i < 2; i++) {
-      let randomNumber;
-      do {
-        randomNumber = Math.floor(Math.random() * 22) + 1;
-      } while (newSelection.includes(randomNumber));
-      newSelection.push(randomNumber);
-    }
-    setSelectedNumbers(newSelection);
-  };
+function HistoryLink({ address, network, children }) {
+  const href = explorerAccountUrl(address, network);
+  return href ? (
+    <a
+      className="history-link"
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {children} <span aria-hidden="true">↗</span>
+    </a>
+  ) : null;
+}
 
-  const purchaseTicket = async () => {
-    if (!publicKey || selectedNumbers.length !== 2 || !program) {
-      console.log("Purchase check failed:", { publicKey, selectedNumbersLength: selectedNumbers.length, program });
-      setErrorMessage("Please connect wallet, select 2 numbers, and ensure program is initialized.");
-      setTimeout(() => setErrorMessage(""), 5000);
-      return;
-    }
-
-    try {
-      setTransactionPending(true);
-      setErrorMessage("");
-
-      console.log("Starting purchase with:", { selectedNumbers, publicKey });
-
-      const [configPda] = web3.PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
-      const [vaultPda] = web3.PublicKey.findProgramAddressSync([Buffer.from("vault")], PROGRAM_ID);
-      const ticketNonce = new BN(Math.floor(Math.random() * 1e9));
-      const [ticketPda] = web3.PublicKey.findProgramAddressSync(
-        [Buffer.from("ticket"), publicKey.toBuffer(), ticketNonce.toArrayLike(Buffer, "le", 8)],
-        PROGRAM_ID
-      );
-
-      const drawTime = calculateNextDrawTime().unix;
-      console.log("Transaction accounts:", { configPda, vaultPda, ticketPda, user: publicKey });
-
-      const tx = await program.methods
-        .buyTicket(ticketNonce, new BN(drawTime), selectedNumbers)
-        .accounts({
-          config: configPda,
-          vault: vaultPda,
-          ticket: ticketPda,
-          user: publicKey,
-          systemProgram: web3.SystemProgram.programId,
-        })
-        .rpc();
-
-      console.log("Transaction successful:", tx);
-
-      const newTicket = {
-        id: ticketNonce.toString(),
-        numbers: [...selectedNumbers],
-        purchaseTime: Math.floor(Date.now() / 1000),
-        drawTime,
-      };
-
-      setTickets((prev) => {
-        const updated = [...prev, newTicket];
-        localStorage.setItem("dodosTickets", JSON.stringify(updated));
-        return updated;
-      });
-
-      setSelectedNumbers([]);
-      setSuccessMessage(`Ticket purchased for ${selectedNumbers.join(" - ")}! Tx: ${tx}`);
-      setTimeout(() => setSuccessMessage(""), 5000);
-    } catch (error) {
-      console.error("Purchase failed:", error.message, error.stack);
-      setErrorMessage(`Transaction failed: ${error.message || "Unknown error"}. Check console.`);
-      setTimeout(() => setErrorMessage(""), 5000);
-    } finally {
-      setTransactionPending(false);
-    }
-  };
-
-  const handleConnectWallet = async () => {
-    try {
-      await connect();
-      setSuccessMessage("Wallet connected successfully!");
-      setTimeout(() => setSuccessMessage(""), 5000);
-    } catch (error) {
-      console.error("Wallet connection failed:", error);
-      setErrorMessage("Wallet connection failed. Please try again.");
-      setTimeout(() => setErrorMessage(""), 5000);
-    }
-  };
-
-  const checkResults = useCallback(
-    async (ticket) => {
-      if (!program) return;
-      try {
-        const [resultPda] = web3.PublicKey.findProgramAddressSync(
-          [Buffer.from("result"), new BN(ticket.drawTime).toArrayLike(Buffer, "le", 8)],
-          PROGRAM_ID
-        );
-        const result = await program.account.result.fetch(resultPda);
-        if (result.isPublished && result.numbers.every((num, i) => num === ticket.numbers[i])) {
-          alert(`Congratulations! You won 1 SOL from this ticket!`);
-        } else {
-          alert("No wins for this ticket. Better luck next time!");
-        }
-      } catch (error) {
-        console.error("Check results failed:", error);
-        setErrorMessage("No results available for this draw yet.");
-        setTimeout(() => setErrorMessage(""), 5000);
-      }
-    },
-    [program]
-  );
-
-  if (isLoading) return <div className="loading-spinner">Loading game...</div>;
+export default function Dodos() {
+  const game = useDodosGame();
+  const { setVisible } = useWalletModal();
+  const cost = game.config
+    ? Number(game.config.ticketCostLamports.toString()) / 1e9
+    : null;
+  const quickPayout = game.config
+    ? Number(game.config.payoutLamports.toString()) / 1e9
+    : null;
+  const dailyPayout =
+    quickPayout === null ? null : quickPayout * DAILY_PAYOUT_MULTIPLIER;
+  const payout = game.quickDraw ? quickPayout : dailyPayout;
+  const currentSeconds = Math.floor(game.now / 1000);
+  const nextDaily = getNextDrawTime(game.now);
+  const available =
+    game.uatReady &&
+    game.authorized &&
+    !game.isLoading &&
+    game.canSign &&
+    game.networkAllowed;
 
   return (
-    <div className="dodos-container">
-      <div className="wallet-btn back-button-container">
-        <button className="matrix-button back-btn" onClick={onBack} aria-label="Back to Game Carousel">
-          <span className="button-text">BACK TO GAMES</span>
-        </button>
+    <div className="dodos-dashboard" id="dodos">
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">PICK. MATCH. CLAIM.</p>
+          <h1>
+            Dodos<span>.</span>
+          </h1>
+          <p className="page-description">
+            Pick two numbers in order. One ticket enters one chosen draw.
+          </p>
+        </div>
+        <span className="test-build-label">Test SOL only</span>
       </div>
 
-      <div className="game-area">
-        <div className="game-sections">
-          <div className="game-section number-selection-section">
-            <h3>SELECT YOUR NUMBERS</h3>
-            <div className="number-grid">
-              {Array.from({ length: 22 }, (_, i) => i + 1).map((number) => (
-                <button
-                  key={number}
-                  className={`number-btn ${selectedNumbers.includes(number) ? "selected" : ""}`}
-                  onClick={() => handleNumberSelect(number)}
-                  disabled={selectedNumbers.length === 2 && !selectedNumbers.includes(number)}
-                  aria-label={`Select number ${number}`}
-                >
-                  {number}
-                </button>
-              ))}
+      <nav className="dodos-page-links" aria-label="Dodos sections">
+        <a href="#buy-ticket">Buy a ticket</a>
+        <a href="#draw-results">Draw results</a>
+        <a href="#dodos-guide">How to play</a>
+      </nav>
+
+      <div className="draw-stats" aria-label="Draw details">
+        <div className="draw-stat">
+          <span>Ticket price</span>
+          <strong>
+            {cost === null ? "—" : cost}
+            <small>SOL</small>
+          </strong>
+          <span>+ network fees & account rent</span>
+        </div>
+        <div className="draw-stat">
+          <span>
+            {game.quickDraw ? "Quick draw prize" : "Daily draw prize"}
+          </span>
+          <strong>
+            {payout === null ? "—" : payout}
+            <small>SOL</small>
+          </strong>
+          <span>
+            {game.quickDraw
+              ? "Faster test draw · exact order"
+              : "Double the quick draw prize · exact order"}
+          </span>
+        </div>
+        <div className="draw-stat">
+          <span>Next daily draw · UTC+8</span>
+          <strong className="draw-stat-time">
+            {formatDrawTime(nextDaily)}
+          </strong>
+          <span>
+            In {formatCountdown(nextDaily - currentSeconds)} · 2 PM and 4 PM
+            daily
+          </span>
+        </div>
+      </div>
+
+      <div
+        className="status-note status-note-warning dashboard-notice"
+        role="note"
+      >
+        {game.uatReady
+          ? "UAT test mode: the live program records 06 → 09. The frontend target is 06 → 07, pending an on-chain upgrade. Results are fixed, not random. Only approved test wallets can play; all amounts are test SOL. Older records keep their original results."
+          : game.isLoading
+            ? "Loading the on-chain UAT configuration. Purchases are paused until test mode is verified."
+            : game.loadFailed
+              ? "UAT mode could not be verified. Purchases are paused until the on-chain configuration loads."
+              : "The fixed-result UAT update is awaiting on-chain configuration. Purchases are paused until the contract confirms test mode."}
+      </div>
+      {game.uatReady && game.connected && !game.authorized && (
+        <div
+          className="status-note status-note-warning dashboard-notice"
+          role="note"
+        >
+          Connect your approved UAT wallet to buy, record results, or claim. You
+          can still view blockchain history.
+        </div>
+      )}
+      {game.error && (
+        <div
+          className={`status-note ${game.refreshWarning || (!game.config && !game.loadFailed) ? "status-note-warning" : "status-note-error"} dashboard-notice`}
+          role="alert"
+        >
+          {game.error}
+        </div>
+      )}
+      {game.message && (
+        <div className="status-note dashboard-notice" role="status">
+          {game.message}
+        </div>
+      )}
+
+      <div className="dashboard-grid">
+        <div className="dashboard-primary">
+          <section
+            id="buy-ticket"
+            className="panel purchase-panel"
+            aria-labelledby="purchase-title"
+          >
+            <div className="panel-heading">
+              <h2 id="purchase-title">Buy a ticket</h2>
+              <span className="onchain-tag">On-chain</span>
             </div>
-
-            <div className="selection-display">
-              {selectedNumbers.length > 0 ? (
-                <p className="selected-numbers-text">Selected: {selectedNumbers.join(", ")}</p>
-              ) : (
-                <p className="select-numbers-prompt">Select 2 numbers (1-22)</p>
-              )}
-
-              <div className="action-buttons">
-                <button className="matrix-button" onClick={clearSelection}>
-                  CLEAR
-                </button>
-                <button className="matrix-button" onClick={generateRandomSelection}>
-                  RANDOM
-                </button>
-              </div>
-
-              <div className="info-box">
-                <div className="info-row">
-                  <span>Ticket Cost:</span>
-                  <span>{ticketCost} SOL</span>
-                </div>
-              </div>
-
+            <div className="selection-heading">
+              <span className="field-label">Choose 2 different numbers</span>
               <button
-                className="matrix-button purchase-btn"
-                onClick={purchaseTicket}
-                disabled={selectedNumbers.length !== 2 || transactionPending || !publicKey}
-                aria-label={`Purchase ticket for ${ticketCost} SOL`}
+                className="button button-ghost"
+                disabled={game.pending}
+                onClick={game.randomize}
               >
-                <span className="button-text">
-                  {transactionPending ? "PROCESSING..." : `PURCHASE (${ticketCost} SOL)`}
-                </span>
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path
+                    d="M3 5h3l8 10h3M14 12l3 3-3 3M3 15h3l3-4m2-2 3-4h3M14 2l3 3-3 3"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Quick pick
               </button>
-
-              {transactionPending && <div className="loading-spinner">Processing Transaction...</div>}
-              {successMessage && <p className="success-message">{successMessage}</p>}
-              {errorMessage && <p className="error-message">{errorMessage}</p>}
-              {!publicKey && (
-                <div className="wallet-notice">
-                  <p>Please connect your wallet to play.</p>
-                  <button className="matrix-button" onClick={handleConnectWallet} aria-label="Connect wallet">
-                    Connect Wallet
+            </div>
+            <div
+              className="number-grid"
+              role="group"
+              aria-label="Numbers 2 to 22, selected in order"
+            >
+              {NUMBER_OPTIONS.map((number) => {
+                const selectedIndex = game.selectedNumbers.indexOf(number);
+                return (
+                  <button
+                    key={number}
+                    className={`number-button ${selectedIndex >= 0 ? "is-selected" : ""}`}
+                    disabled={
+                      game.pending ||
+                      (game.selectedNumbers.length === 2 && selectedIndex < 0)
+                    }
+                    onClick={() => game.select(number)}
+                    aria-label={`Number ${number}${selectedIndex >= 0 ? `, pick ${selectedIndex + 1}` : ""}`}
+                    aria-pressed={selectedIndex >= 0}
+                  >
+                    {String(number).padStart(2, "0")}
+                    {selectedIndex >= 0 && (
+                      <span className="pick-order">{selectedIndex + 1}</span>
+                    )}
                   </button>
-                </div>
-              )}
+                );
+              })}
             </div>
-          </div>
-
-          <div className="game-section results-section">
-            <h3>RECENT RESULTS</h3>
-            <div className="results-grid">
-              {lastResults.map((result, index) => (
-                <div key={index} className="result-card">
-                  <p className="result-time">{result.time}</p>
-                  <p className="result-numbers">{result.numbers.join(" - ")}</p>
-                  <p className="result-winners">
-                    {result.winners} winner{result.winners !== 1 ? "s" : ""}
-                  </p>
-                </div>
+            <div className="selection-summary">
+              <div>
+                <span className="field-label">
+                  Your selection{" "}
+                  <span className="selection-order-label">· order matters</span>
+                </span>
+                <NumberPair
+                  numbers={game.selectedNumbers}
+                  placeholder={!game.selectedNumbers.length}
+                />
+              </div>
+              <button
+                className="button button-ghost"
+                onClick={game.clearSelection}
+                disabled={game.pending || !game.selectedNumbers.length}
+              >
+                Clear
+              </button>
+            </div>
+            <label className="field-label" htmlFor="draw-mode">
+              Choose one draw · UTC+8
+            </label>
+            <select
+              id="draw-mode"
+              value={game.drawChoice}
+              disabled={game.pending}
+              onChange={(event) => game.setDrawChoice(event.target.value)}
+            >
+              {game.dailyDraws.map((drawTime) => (
+                <option key={drawTime} value={String(drawTime)}>
+                  {formatDrawTime(drawTime)}
+                  {drawTime <= currentSeconds
+                    ? " · Started — choose another"
+                    : " · Daily draw"}
+                </option>
               ))}
+              {game.uatReady && (
+                <option value="quick">
+                  UAT quick draw · about 60 seconds · {quickPayout ?? "—"} SOL
+                </option>
+              )}
+            </select>
+            <p className="draw-rules">
+              {game.quickDraw
+                ? "A faster UAT test with the quick prize shown above. The timer starts when you press Buy; approve within about one minute. Daily draws offer double the prize with the same matching rules."
+                : "This ticket is valid only for the date and time selected. The 2 PM and 4 PM draws need separate tickets. You can enter until the selected draw starts."}
+            </p>
+            {game.drawExpired && (
+              <p className="draw-expired" role="status">
+                This draw has started. Choose an upcoming draw; your selection
+                will not move automatically.
+              </p>
+            )}
+            <div className="ticket-total">
+              <span>Ticket total</span>
+              <strong>
+                {cost === null ? "Awaiting contract" : `${cost} SOL`}
+                <small> + fees & rent</small>
+              </strong>
             </div>
+            <button
+              className="button button-primary purchase-button"
+              onClick={game.connected ? game.purchase : () => setVisible(true)}
+              disabled={
+                game.pending ||
+                (game.connected &&
+                  (!available ||
+                    game.drawExpired ||
+                    game.selectedNumbers.length !== 2))
+              }
+            >
+              {game.pending
+                ? "Waiting for transaction…"
+                : !game.connected
+                  ? "Connect wallet to buy a ticket"
+                  : game.networkChecking
+                    ? "Checking network…"
+                    : !game.networkAllowed
+                      ? "Test network required"
+                      : !game.canSign
+                        ? "A signing wallet is required"
+                        : !game.uatReady
+                          ? "UAT setup pending"
+                          : !game.authorized
+                            ? "Approved UAT wallet required"
+                            : game.drawExpired
+                              ? "Choose an upcoming draw"
+                              : game.pendingPurchase
+                                ? "Check / retry purchase"
+                                : "Buy ticket"}
+              <span aria-hidden="true">↗</span>
+            </button>
+            <p className="purchase-caption">
+              {game.pendingPurchase
+                ? "Retries reuse the same ticket ID so only one purchase can succeed. Use Refresh to check its status without sending."
+                : !game.networkAllowed && !game.networkChecking
+                  ? "Connect to Devnet, Testnet, or a local validator to use Dodos."
+                  : game.isLoading
+                    ? "Loading contract details…"
+                    : !game.config
+                      ? "Ticket purchases will be available when this network is initialized."
+                      : "Approve before the draw starts. A late transaction is rejected; no ticket price is collected. Failed transactions can still incur a network fee."}
+            </p>
+          </section>
 
-            <h3>NEXT DRAW</h3>
-            <p className="next-draw">{nextDraw} (UTC+8)</p>
-          </div>
+          <section
+            className="panel tickets-panel"
+            aria-labelledby="tickets-title"
+          >
+            <div className="panel-heading">
+              <div className="tickets-title">
+                <h2 id="tickets-title">Your tickets</h2>
+                {game.connected && game.config && !game.loadFailed && (
+                  <span className="count-badge">{game.tickets.length}</span>
+                )}
+              </div>
+              <button
+                className="button button-ghost"
+                disabled={
+                  game.pending || game.isLoading || game.refreshCooldown > 0
+                }
+                onClick={game.refresh}
+                aria-label="Refresh tickets and results"
+              >
+                <RefreshIcon />
+                {game.refreshCooldown > 0
+                  ? `Refresh in ${game.refreshCooldown}s`
+                  : "Refresh"}
+              </button>
+            </div>
+            {game.isLoading ? (
+              <div className="empty-state" role="status">
+                Loading on-chain tickets…
+              </div>
+            ) : !game.connected ? (
+              <div className="empty-state">
+                <svg viewBox="0 0 28 28" fill="none" aria-hidden="true">
+                  <rect
+                    x="4"
+                    y="6"
+                    width="20"
+                    height="16"
+                    rx="3"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  />
+                  <path
+                    d="M18 12h6v5h-6a2.5 2.5 0 0 1 0-5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  />
+                </svg>
+                <strong>Your tickets live here</strong>Connect a wallet to view
+                your on-chain tickets.
+              </div>
+            ) : game.tickets.length === 0 ? (
+              <div className="empty-state">
+                <strong>
+                  {game.loadFailed ? "Tickets unavailable" : "No tickets yet"}
+                </strong>
+                {game.loadFailed
+                  ? "Refresh after the connection is available."
+                  : "Choose your numbers above to enter a draw."}
+              </div>
+            ) : (
+              <TicketList
+                newestFirst
+                tickets={game.tickets}
+                renderTicket={(ticket) => {
+                  const due = currentSeconds >= ticket.drawTime;
+                  const published = Boolean(ticket.result?.isPublished);
+                  const won =
+                    published &&
+                    ticket.numbers.every(
+                      (number, index) =>
+                        number === ticket.result.numbers[index],
+                    );
+                  const status = ticket.settled
+                    ? won
+                      ? "Prize claimed"
+                      : "Closed"
+                    : !due
+                      ? "Upcoming"
+                      : !published
+                        ? "Awaiting result"
+                        : won
+                          ? "Prize ready"
+                          : "No match";
+                  return (
+                    <article className="ticket-card">
+                      <div className="ticket-card-top">
+                        <NumberPair numbers={ticket.numbers} />
+                        <span
+                          className={`ticket-status ${won && !ticket.settled ? "ticket-status-ready" : ""}`}
+                        >
+                          {status}
+                        </span>
+                      </div>
+                      <p className="ticket-draw-time">
+                        {formatDrawTime(ticket.drawTime)} · UTC+8
+                      </p>
+                      {ticket.payoutLamports !== null &&
+                        ticket.payoutLamports !== undefined && (
+                          <p className="ticket-prize">
+                            This ticket's match prize:{" "}
+                            {ticket.payoutLamports / 1e9} SOL
+                          </p>
+                        )}
+                      <p className="ticket-countdown">
+                        {ticket.settled
+                          ? won
+                            ? "Prize transfer recorded on-chain"
+                            : "Closed without a prize"
+                          : !due
+                            ? `Starts in ${formatCountdown(ticket.drawTime - currentSeconds)}`
+                            : !published
+                              ? "Draw is due. Record the result to check this ticket."
+                              : won
+                                ? "Both numbers match in order. UAT prizes have no claim deadline."
+                                : "No prize. You can close this ticket to release reserved prize capacity."}
+                      </p>
+                      {published && (
+                        <div className="ticket-result">
+                          <span>Recorded result</span>
+                          <NumberPair numbers={ticket.result.numbers} />
+                        </div>
+                      )}
+                      <div className="ticket-history">
+                        <HistoryLink
+                          address={ticket.address}
+                          network={game.network}
+                        >
+                          Ticket history
+                        </HistoryLink>
+                        {published && (
+                          <HistoryLink
+                            address={ticket.result.id}
+                            network={game.network}
+                          >
+                            Draw history
+                          </HistoryLink>
+                        )}
+                      </div>
+                      <div className="ticket-actions">
+                        <button
+                          className="button button-secondary"
+                          disabled={game.pending}
+                          onClick={() => game.check(ticket)}
+                        >
+                          View result · free
+                        </button>
+                        {!published && (
+                          <button
+                            className="button button-secondary"
+                            disabled={
+                              game.pending ||
+                              !game.canSign ||
+                              !game.networkAllowed ||
+                              !game.authorized ||
+                              !due ||
+                              ticket.settled
+                            }
+                            onClick={() => game.publish(ticket)}
+                          >
+                            Record draw result
+                          </button>
+                        )}
+                        {published && !ticket.settled && (
+                          <button
+                            className="button button-primary"
+                            disabled={
+                              game.pending ||
+                              !game.canSign ||
+                              !game.networkAllowed ||
+                              !game.authorized ||
+                              !due ||
+                              ticket.settled
+                            }
+                            onClick={() => game.settle(ticket)}
+                          >
+                            {won ? "Claim prize" : "Close ticket"}
+                          </button>
+                        )}
+                      </div>
+                      {!ticket.settled && (
+                        <p className="ticket-action-note">
+                          {!published
+                            ? "Record draw result saves the contract's result; you cannot choose the numbers. This wallet pays the network fee and result account rent once per draw."
+                            : won
+                              ? "Claim prize transfers the payout to your wallet. A network fee applies."
+                              : "Closing is optional. A network fee applies; no prize is paid."}
+                        </p>
+                      )}
+                    </article>
+                  );
+                }}
+              />
+            )}
+          </section>
         </div>
 
-        {tickets.length > 0 && (
-          <div className="game-section tickets-section">
-            <h3>YOUR TICKETS</h3>
-            <TicketList tickets={tickets} onCheckResults={checkResults} />
-          </div>
-        )}
+        <div className="dashboard-secondary">
+          <DodosGuide
+            priceSol={cost}
+            quickPayoutSol={quickPayout}
+            dailyPayoutSol={dailyPayout}
+            uatReady={game.uatReady}
+          />
+          <DonationCard />
+        </div>
       </div>
+      <DrawResults
+        results={game.results}
+        network={game.network}
+        quickPayout={quickPayout}
+        dailyPayout={dailyPayout}
+        isLoading={game.isLoading}
+        loadFailed={game.loadFailed}
+        refreshWarning={game.refreshWarning}
+      />
     </div>
   );
 }

@@ -1,74 +1,185 @@
-header {
-  background: var(--header-bg);
-  padding: 0.5rem;
-  border-block: 2px solid var(--accent-color);
-  text-align: center;
-  z-index: 100;
-}
-
-.header-container {
+.header {
   display: flex;
-  justify-content: center;
   align-items: center;
-  flex: 1;
-}
-
-.header-content {
-  text-align: center;
-  padding: 0.5rem;
-}
-
-.header-description {
-  font-size: clamp(0.8rem, 2.5vw, 1rem);
-  max-width: 600px;
-  margin: 0.5rem auto;
-  text-align: center;
-}
-
-.ticker {
-  overflow: hidden;
-  white-space: nowrap;
+  justify-content: space-between;
+  gap: 20px;
   width: 100%;
-  max-width: 40rem;
-  margin: 0 auto;
+  min-height: 76px;
+  padding: 16px 44px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
 }
 
-.ticker-text {
-  display: inline-block;
-  font-family: "Orbitron", monospace;
-  font-size: clamp(1.5rem, 5vw, 3rem);
-  color: var(--hover-accent);
-  text-shadow: 0 0 4px var(--accent-color);
-  animation: scroll 20s linear infinite;
+.header-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-.ticker-text.hiperia-ticker-text {
-  font-size: clamp(5.5rem, 10vw, 10rem);
+.header-breadcrumb-separator {
+  color: #45616a;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 20px;
+}
+.network-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #b6cbcf;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.header-balance {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.header-balance > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.wallet-btn {
+  display: flex;
+  align-items: center;
 }
 
-.ticker-text:hover, .ticker-text:focus {
-  animation-play-state: paused;
+.wallet-btn .wallet-adapter-button {
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--mint);
+  color: #102a25;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 38px;
+  white-space: nowrap;
 }
 
-@keyframes scroll {
-  from { transform: translateX(100%); }
-  to { transform: translateX(-100%); }
+.wallet-btn .wallet-adapter-button:not([disabled]):hover {
+  background: #b9ffed;
+}
+.wallet-btn .wallet-adapter-button[disabled] {
+  background: #24463f;
+  color: #8eaaa4;
+}
+.wallet-btn .wallet-adapter-button-start-icon {
+  width: 17px;
+  height: 17px;
+  margin-right: 8px;
+}
+.wallet-btn .wallet-adapter-button-start-icon img {
+  width: 17px;
+  height: 17px;
+}
+.wallet-adapter-dropdown-list {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #18292f;
+  box-shadow: 0 8px 24px #0003;
+}
+.wallet-adapter-dropdown-list-item {
+  height: 36px;
+  font-family: inherit;
+  font-size: 12px;
+}
+.wallet-adapter-dropdown-list-item:not([disabled]):hover {
+  background: #253c43;
+}
+.wallet-adapter-modal-wrapper {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 18px 60px #0006;
+}
+.wallet-adapter-modal-title {
+  font-family: "Manrope", sans-serif;
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+.wallet-adapter-modal-button-close {
+  background: #20343b;
+}
+.wallet-adapter-modal-list .wallet-adapter-button {
+  font-family: inherit;
+  font-size: 14px;
+}
+.wallet-adapter-modal-list .wallet-adapter-button:hover {
+  background: #20343b;
+}
+.wallet-adapter-modal-middle-button {
+  font-family: inherit;
+  color: var(--mint);
 }
 
-@media (max-width: 768px) {
-  header {
-    padding: 0.25rem;
-    background: rgba(0, 0, 0, 0.6);
+@media (max-width: 1150px) {
+  .header {
+    padding-inline: 28px;
+  }
+  .header-actions {
+    gap: 14px;
   }
 }
 
-@media (max-width: 640px) {
-  .ticker-text {
-    font-size: clamp(1.2rem, 3vw, 1.5rem);
-    animation-duration: 15s;
+@media (max-width: 850px) {
+  .header {
+    min-height: 70px;
+    padding: 14px 22px;
   }
-  
-  .ticker-text.hiperia-ticker-text {
-    font-size: clamp(5.5rem, 6vw, 5.5rem);
+}
+
+@media (max-width: 620px) {
+  .header-breadcrumb {
+    gap: 10px;
+    font-size: 11px;
   }
+  .header-actions {
+    gap: 12px;
+  }
+  .header-balance {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .header {
+    padding: 14px 16px;
+  }
+  .header-breadcrumb {
+    display: none;
+  }
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .network-badge {
+    gap: 7px;
+    font-size: 10px;
+  }
+  .wallet-btn .wallet-adapter-button {
+    padding-inline: 13px;
+    font-size: 11px;
+  }
+}
+.environment-badge {
+  border: 1px solid var(--mint);
+  border-radius: 4px;
+  color: var(--mint);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 4px 7px;
 }

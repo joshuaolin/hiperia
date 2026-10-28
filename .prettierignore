@@ -1,0 +1,9 @@
+node_modules
+dist
+.npm-cache
+.cleanup
+hiperia
+hiperia-1
+hiperia_program/target
+package-lock.json
+hiperia_program/package-lock.json
