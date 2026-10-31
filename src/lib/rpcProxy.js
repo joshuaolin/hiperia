@@ -1,27 +1,52 @@
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { Buffer } from "node:buffer";
 import idl from "../idl/hiperia_program.json" with { type: "json" };
+import vrfIdl from "../idl/hiperia_vrf.json" with { type: "json" };
 
 export const DEVNET_RPC = "https://api.devnet.solana.com";
 export const RPC_BODY_LIMIT = 65_536;
 const SUPPORT_WALLET = "Ghxn7ree6MFQxC8hFTJ8Lo319xEZzqVFLcmDLKVFpPaa";
+const RULES_PAYER = "2txjN4S6WEiDDT8R3QvGFgwZrchQ8k5kBXRhbYFX1eSz";
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]+$/;
 const COMMITMENTS = new Set(["processed", "confirmed", "finalized"]);
 const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-const DISCRIMINATORS = new Set(
-  idl.accounts.map(({ discriminator }) => {
-    let number = BigInt(`0x${Buffer.from(discriminator).toString("hex")}`);
-    let encoded = "";
-    while (number > 0n) {
-      encoded = ALPHABET[Number(number % 58n)] + encoded;
-      number /= 58n;
-    }
-    for (const byte of discriminator) {
-      if (byte !== 0) break;
-      encoded = `1${encoded}`;
-    }
-    return encoded;
-  }),
+function encodeDiscriminator(discriminator) {
+  let number = BigInt(`0x${Buffer.from(discriminator).toString("hex")}`);
+  let encoded = "";
+  while (number > 0n) {
+    encoded = ALPHABET[Number(number % 58n)] + encoded;
+    number /= 58n;
+  }
+  for (const byte of discriminator) {
+    if (byte !== 0) break;
+    encoded = `1${encoded}`;
+  }
+  return encoded;
+}
+const PROGRAMS = new Map(
+  [
+    [idl, { getrules: 56, getreferralrules: 34 }],
+    [vrfIdl, { getrules: 56, getaccessrules: 3, getrandomnessrules: 39 }],
+  ].map(([program, sizes]) => [
+    program.address,
+    {
+      config: PublicKey.findProgramAddressSync(
+        [Buffer.from("config")],
+        new PublicKey(program.address),
+      )[0].toBase58(),
+      metadata: program.instructions.flatMap(({ name, discriminator }) => {
+        const bytes = sizes[name.replaceAll("_", "").toLowerCase()];
+        return bytes
+          ? [{ discriminator: Buffer.from(discriminator), bytes }]
+          : [];
+      }),
+      discriminators: new Set(
+        program.accounts.map(({ discriminator }) =>
+          encodeDiscriminator(discriminator),
+        ),
+      ),
+    },
+  ]),
 );
 const READ_METHODS = new Set([
   "getGenesisHash",
@@ -34,6 +59,7 @@ const READ_METHODS = new Set([
   "getSignatureStatuses",
   "getMinimumBalanceForRentExemption",
   "getProgramAccounts",
+  "simulateTransaction",
 ]);
 
 export class RpcProxyError extends Error {
@@ -134,7 +160,7 @@ function validateTransaction(encoded) {
   let applicationInstruction = false;
   for (const instruction of message.compiledInstructions) {
     const program = keys[instruction.programIdIndex]?.toBase58();
-    if (program === idl.address) {
+    if (PROGRAMS.has(program)) {
       applicationInstruction = true;
       continue;
     }
@@ -156,6 +182,85 @@ function validateTransaction(encoded) {
     applicationInstruction = true;
   }
   requireValue(applicationInstruction, "A Hiperia instruction is required.");
+}
+
+function validateRulesSimulation(params) {
+  requireValue(params.length === 2 && base64(params[0]));
+  const config = params[1];
+  requireValue(
+    isObject(config) &&
+      Object.keys(config).every((key) =>
+        [
+          "encoding",
+          "sigVerify",
+          "replaceRecentBlockhash",
+          "commitment",
+        ].includes(key),
+      ) &&
+      config.encoding === "base64" &&
+      config.sigVerify === false &&
+      config.replaceRecentBlockhash === true &&
+      (config.commitment === undefined || COMMITMENTS.has(config.commitment)),
+    "Only the read-only rules simulation is supported.",
+  );
+  let transaction;
+  const wire = Buffer.from(params[0], "base64");
+  try {
+    transaction = VersionedTransaction.deserialize(wire);
+    requireValue(Buffer.from(transaction.serialize()).equals(wire));
+  } catch {
+    throw new RpcProxyError("Invalid rules simulation transaction.");
+  }
+  const message = transaction.message;
+  const keys = message.staticAccountKeys.map((key) => key.toBase58());
+  const instruction = message.compiledInstructions[0];
+  const programId = keys[instruction?.programIdIndex];
+  const program = PROGRAMS.get(programId);
+  requireValue(
+    program &&
+      message.version === 0 &&
+      !message.addressTableLookups.length &&
+      message.header.numRequiredSignatures === 1 &&
+      message.header.numReadonlySignedAccounts === 0 &&
+      message.header.numReadonlyUnsignedAccounts === 2 &&
+      transaction.signatures.length === 1 &&
+      transaction.signatures[0].every((byte) => byte === 0) &&
+      keys.length === 3 &&
+      new Set(keys).size === 3 &&
+      keys[0] === RULES_PAYER &&
+      keys.includes(program.config) &&
+      keys.includes(programId) &&
+      message.compiledInstructions.length === 1,
+    "Only the unsigned read-only rules simulation is supported.",
+  );
+  const metadata = program.metadata.find(
+    ({ discriminator }) =>
+      discriminator.length === 8 &&
+      Buffer.from(instruction.data).equals(discriminator),
+  );
+  requireValue(
+    instruction.accountKeyIndexes.length === 1 &&
+      keys[instruction.accountKeyIndexes[0]] === program.config &&
+      metadata,
+    "Only this Hiperia program's read-only metadata instructions are supported for simulation.",
+  );
+  return { programId, bytes: metadata.bytes };
+}
+
+function hasRulesReturnData(value, request) {
+  const simulation = value.result?.value;
+  const metadata = validateRulesSimulation(request.params);
+  return (
+    !value.error &&
+    simulation?.err === null &&
+    simulation.returnData?.programId === metadata.programId &&
+    Array.isArray(simulation.returnData.data) &&
+    simulation.returnData.data.length === 2 &&
+    simulation.returnData.data[1] === "base64" &&
+    base64(simulation.returnData.data[0], 56) &&
+    Buffer.from(simulation.returnData.data[0], "base64").length ===
+      metadata?.bytes
+  );
 }
 
 export function validateRpcRequest(request) {
@@ -235,8 +340,8 @@ export function validateRpcRequest(request) {
       );
   } else if (method === "getProgramAccounts") {
     requireValue(
-      params.length === 2 && params[0] === idl.address,
-      "Only the Hiperia program may be scanned.",
+      params.length === 2 && PROGRAMS.has(params[0]),
+      "Only Hiperia programs may be scanned.",
     );
     const config = options(params[1], ["encoding", "filters", "withContext"]);
     requireValue(
@@ -273,11 +378,16 @@ export function validateRpcRequest(request) {
             BASE58.test(memcmp.bytes) &&
             (memcmp.encoding === undefined || memcmp.encoding === "base58"),
         );
-        if (memcmp.offset === 0 && DISCRIMINATORS.has(memcmp.bytes))
+        if (
+          memcmp.offset === 0 &&
+          PROGRAMS.get(params[0]).discriminators.has(memcmp.bytes)
+        )
           discriminator = true;
       }
     }
     requireValue(discriminator, "An account discriminator filter is required.");
+  } else if (method === "simulateTransaction") {
+    validateRulesSimulation(params);
   } else if (method === "sendTransaction") {
     requireValue(params.length === 2);
     validateTransaction(params[0]);
@@ -316,19 +426,28 @@ export function validateRpcRequest(request) {
 }
 
 export function validateRpcOrigin(headers, environment) {
+  const preview = environment.VERCEL_ENV === "preview";
+  const productionDemo =
+    environment.VERCEL_ENV === "production" &&
+    environment.HIPERIA_TESTNET_DEMO === "1";
   requireValue(
-    environment.VERCEL_ENV === "preview",
-    "RPC is enabled only for UAT Preview deployments.",
+    preview || productionDemo,
+    "RPC requires UAT Preview or an explicitly enabled Devnet demo deployment.",
   );
   const host = headers.host;
   const allowed = new Set(
-    ["www.uat.hiperia.xyz", environment.VERCEL_URL].filter(Boolean),
+    [
+      ...(preview
+        ? ["www.uat.hiperia.xyz"]
+        : ["hiperia.xyz", "www.hiperia.xyz", "uat.hiperia.xyz"]),
+      environment.VERCEL_URL,
+    ].filter(Boolean),
   );
   requireValue(
     typeof host === "string" &&
       allowed.has(host) &&
       headers.origin === `https://${host}`,
-    "A same-origin UAT request is required.",
+    "A same-origin Hiperia testnet request is required.",
   );
   requireValue(
     !headers["sec-fetch-site"] || headers["sec-fetch-site"] === "same-origin",
@@ -378,9 +497,11 @@ export function createRpcProxy({
     const ttl =
       request.method === "getGenesisHash"
         ? 60_000
-        : request.method === "getProgramAccounts"
-          ? 1_000
-          : 0;
+        : request.method === "simulateTransaction"
+          ? 30_000
+          : request.method === "getProgramAccounts"
+            ? 1_000
+            : 0;
     const cached = cache.get(key);
     if (!write && cached && cached.until > now())
       return { ...cached.value, id: request.id };
@@ -448,7 +569,23 @@ export function createRpcProxy({
             502,
             -32000,
           );
-        if (ttl && !value.error) {
+        if (
+          request.method === "simulateTransaction" &&
+          !value.error &&
+          value.result?.value?.err == null &&
+          !hasRulesReturnData(value, request)
+        )
+          throw new RpcProxyError(
+            "Unexpected Hiperia metadata response.",
+            502,
+            -32000,
+          );
+        if (
+          ttl &&
+          !value.error &&
+          (request.method !== "simulateTransaction" ||
+            hasRulesReturnData(value, request))
+        ) {
           cache.delete(key);
           cache.set(key, { until: now() + ttl, value });
           while (cache.size > 128) cache.delete(cache.keys().next().value);

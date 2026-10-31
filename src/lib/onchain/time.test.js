@@ -5,6 +5,7 @@ import {
   getUpcomingDrawTimes,
   formatCountdown,
   formatDrawTime,
+  formatDailyDrawHours,
   getSelectedDrawTime,
   isDailyDrawTime,
   getUatDrawTime,
@@ -13,19 +14,29 @@ import {
 const timestamp = (value) => Date.parse(value);
 const seconds = (value) => timestamp(value) / 1000;
 
-test("daily choices include exact upcoming 2 PM and 4 PM occurrences in Manila", () => {
+test("daily choices include six exact draws spaced four hours apart in Manila", () => {
+  assert.equal(formatDailyDrawHours(), "2 AM, 6 AM, 10 AM, 2 PM, 6 PM, 10 PM");
   assert.deepEqual(getUpcomingDrawTimes(timestamp("2026-10-28T05:59:59Z")), [
     seconds("2026-10-28T06:00:00Z"),
-    seconds("2026-10-28T08:00:00Z"),
+    seconds("2026-10-28T10:00:00Z"),
+    seconds("2026-10-28T14:00:00Z"),
+    seconds("2026-10-28T18:00:00Z"),
+    seconds("2026-10-28T22:00:00Z"),
+    seconds("2026-10-29T02:00:00Z"),
   ]);
   assert.deepEqual(getUpcomingDrawTimes(timestamp("2026-10-28T06:00:00Z")), [
-    seconds("2026-10-28T08:00:00Z"),
+    seconds("2026-10-28T10:00:00Z"),
+    seconds("2026-10-28T14:00:00Z"),
+    seconds("2026-10-28T18:00:00Z"),
+    seconds("2026-10-28T22:00:00Z"),
+    seconds("2026-10-29T02:00:00Z"),
     seconds("2026-10-29T06:00:00Z"),
   ]);
-  assert.deepEqual(getUpcomingDrawTimes(timestamp("2026-10-28T08:00:00Z")), [
-    seconds("2026-10-29T06:00:00Z"),
-    seconds("2026-10-29T08:00:00Z"),
-  ]);
+  for (const draw of getUpcomingDrawTimes(timestamp("2026-10-28T05:59:59Z"))) {
+    assert.equal(isDailyDrawTime(draw), true);
+    assert.equal(getNextDrawTime(draw * 1000 - 1), draw);
+    assert.equal(getNextDrawTime(draw * 1000), draw + 14_400);
+  }
 });
 
 test("daily schedule handles local date and year rollover within 24 hours", () => {
@@ -35,7 +46,7 @@ test("daily schedule handles local date and year rollover within 24 hours", () =
     "2028-02-28T23:00:00Z",
   ]) {
     const choices = getUpcomingDrawTimes(timestamp(now));
-    assert.equal(choices.length, 2);
+    assert.equal(choices.length, 6);
     assert.equal(getNextDrawTime(timestamp(now)), choices[0]);
     assert.ok(
       choices.every(
@@ -68,6 +79,10 @@ test("checkout preserves the selected occurrence and rejects it after the draw s
     getSelectedDrawTime("quick", before),
     Math.floor(before / 1000) + 60,
   );
+  assert.throws(
+    () => getSelectedDrawTime(String(seconds("2026-10-28T08:00:00Z")), before),
+    /scheduled daily draws or Quick draw/,
+  );
 });
 
 test("countdown renders long waits, final seconds and elapsed draws", () => {
@@ -76,10 +91,14 @@ test("countdown renders long waits, final seconds and elapsed draws", () => {
   assert.equal(formatCountdown(-1), "0m 0s");
 });
 
-test("only exact 2 PM and 4 PM Manila timestamps count as daily draws", () => {
+test("only the six exact Manila slots count as daily draws", () => {
   for (const value of [
+    "2026-10-27T18:00:00Z",
+    "2026-10-27T22:00:00Z",
+    "2026-10-28T02:00:00Z",
     "2026-10-28T06:00:00Z",
-    "2026-10-28T08:00:00Z",
+    "2026-10-28T10:00:00Z",
+    "2026-10-28T14:00:00Z",
     "2027-01-01T06:00:00Z",
   ]) {
     const draw = seconds(value);
@@ -93,7 +112,7 @@ test("only exact 2 PM and 4 PM Manila timestamps count as daily draws", () => {
     -1,
     0,
     "1793167200",
-    seconds("2026-10-28T14:00:00Z"),
+    seconds("2026-10-28T13:00:00Z"),
     seconds("2026-10-28T06:00:00Z") + 0.5,
   ]) {
     assert.equal(isDailyDrawTime(draw), false);
@@ -102,8 +121,12 @@ test("only exact 2 PM and 4 PM Manila timestamps count as daily draws", () => {
 
 test("quick test draws avoid daily prize slots at checkout, including custom test delays", () => {
   for (const daily of [
+    "2026-10-27T18:00:00Z",
+    "2026-10-27T22:00:00Z",
+    "2026-10-28T02:00:00Z",
     "2026-10-28T06:00:00Z",
-    "2026-10-28T08:00:00Z",
+    "2026-10-28T10:00:00Z",
+    "2026-10-28T14:00:00Z",
     "2027-01-01T06:00:00Z",
   ]) {
     for (const delay of [25, 35, 60]) {

@@ -1,6 +1,12 @@
 const DAY_SECONDS = 86_400;
 const MANILA_OFFSET = 28_800;
-const SESSIONS = new Set(["all", "14", "16", "test"]);
+const SESSIONS = new Set([
+  "all",
+  "quick",
+  "daily",
+  "unknown",
+  ...Array.from({ length: 24 }, (_, hour) => String(hour)),
+]);
 const dateFormatter = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
   month: "short",
@@ -32,22 +38,28 @@ function dayStart(value, field) {
   return milliseconds / 1000 - MANILA_OFFSET;
 }
 
-export function getDrawSession(drawTime) {
-  const seconds = Number(drawTime);
-  if (!Number.isSafeInteger(seconds)) return null;
+export function getDrawSession(value) {
+  const record = value !== null && typeof value === "object" ? value : null;
+  const seconds = Number(record?.drawTime);
+  if (!Number.isSafeInteger(seconds) || seconds <= 0) return null;
+  if (record?.drawType === "quick") return "quick";
+  if (record?.drawType !== "daily") return "unknown";
   const local =
     (((seconds + MANILA_OFFSET) % DAY_SECONDS) + DAY_SECONDS) % DAY_SECONDS;
-  if (local === 14 * 3600) return "14";
-  if (local === 16 * 3600) return "16";
-  return "test";
+  return local % 3600 === 0 ? String(local / 3600) : "daily";
 }
 
-export function drawSessionLabel(drawTime) {
-  return (
-    { 14: "2 PM draw", 16: "4 PM draw", test: "UAT test draw" }[
-      getDrawSession(drawTime)
-    ] ?? "Unknown session"
-  );
+export function formatSessionHour(hour) {
+  return `${hour % 12 || 12} ${hour < 12 ? "AM" : "PM"}`;
+}
+
+export function drawSessionLabel(value) {
+  const session = getDrawSession(value);
+  if (session === "quick") return "Quick draw";
+  if (session === "daily") return "Daily draw";
+  return session === null || session === "unknown"
+    ? "Type not recorded"
+    : `${formatSessionHour(Number(session))} daily draw`;
 }
 
 export function formatCombination(numbers) {
@@ -99,7 +111,7 @@ export class DrawHistory {
       (record) =>
         (start === null || record.drawTime >= start) &&
         (end === null || record.drawTime < end + DAY_SECONDS) &&
-        (session === "all" || getDrawSession(record.drawTime) === session),
+        (session === "all" || getDrawSession(record) === session),
     );
     const pages = Math.max(1, Math.ceil(matches.length / pageSize));
     const currentPage = Math.min(page, pages);

@@ -6,13 +6,13 @@
   margin: 0 44px;
   padding: 20px 0;
   border-top: 1px solid var(--border);
-  color: #718d95;
+  color: var(--muted);
   font-size: 10px;
   line-height: 1.6;
 }
 
 .footer-brand {
-  color: #9bb3b9;
+  color: #bdb2ce;
   font-weight: 600;
 }
 .footer-note {

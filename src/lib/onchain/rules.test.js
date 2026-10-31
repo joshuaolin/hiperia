@@ -9,6 +9,8 @@ import {
   createQuickPick,
   QUICK_PAYOUT_MULTIPLIER,
   DAILY_PAYOUT_MULTIPLIER,
+  DAILY_DRAW_HOURS,
+  FIXED_UAT_NUMBERS,
 } from "./rules.js";
 
 test("the current selection pool is exactly 02 through 22 with 420 ordered pairs", () => {
@@ -23,6 +25,8 @@ test("the current selection pool is exactly 02 through 22 with 420 ordered pairs
   assert.equal(QUICK_PAYOUT_MULTIPLIER, 1);
   assert.equal(DAILY_PAYOUT_MULTIPLIER, 2);
   assert.equal(NUMBER_OPTIONS.includes(1), false);
+  assert.deepEqual(DAILY_DRAW_HOURS, [2, 6, 10, 14, 18, 22]);
+  assert.deepEqual(FIXED_UAT_NUMBERS, [2, 22]);
 });
 
 test("quick pick includes both range edges without duplicates or number 01", () => {

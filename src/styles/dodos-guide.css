@@ -3,7 +3,7 @@
   min-width: 0;
 }
 .dodos-guide-heading .eyebrow {
-  color: #8fc7b8;
+  color: var(--purple-light);
   font-size: 9px;
   letter-spacing: 1.5px;
 }
@@ -28,7 +28,7 @@
 }
 .dodos-guide-facts caption {
   text-align: left;
-  color: #bdd0d4;
+  color: #d6ccdf;
   font-weight: 600;
   padding-bottom: 6px;
 }
@@ -49,12 +49,12 @@
   font-weight: 400;
 }
 .dodos-guide-facts td {
-  color: #c4d8dc;
+  color: #d1c8dd;
 }
 .dodos-guide-facts small {
   display: block;
   margin-top: 3px;
-  color: #8ba7af;
+  color: var(--muted);
   font-size: 10px;
 }
 .dodos-guide-steps {
@@ -74,16 +74,16 @@
   place-items: center;
   flex: 0 0 27px;
   height: 27px;
-  border: 1px solid #31534b;
+  border: 1px solid var(--accent-border);
   border-radius: 7px;
-  background: #18312e;
+  background: var(--accent-surface);
   color: var(--mint);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 .dodos-guide-steps h3,
 .dodos-guide-test h3 {
-  color: #c7dadc;
+  color: #ded4ee;
   font-size: 11px;
   font-weight: 600;
   line-height: 1.6;
@@ -92,12 +92,12 @@
 .dodos-guide-details p,
 .dodos-guide-test p {
   margin-top: 5px;
-  color: #91abb3;
+  color: var(--muted);
   font-size: 11px;
   line-height: 1.8;
 }
 .dodos-guide strong {
-  color: #c2d7d9;
+  color: #d1c8dd;
   font-weight: 550;
 }
 .dodos-guide-details {
@@ -108,7 +108,7 @@
 }
 .dodos-guide-details summary {
   cursor: pointer;
-  color: #aed7cd;
+  color: var(--purple-light);
   font-size: 11px;
   line-height: 1.7;
 }
@@ -122,15 +122,15 @@
 .dodos-guide-test {
   margin-top: 20px;
   padding: 13px;
-  border: 1px solid #3f4132;
+  border: 1px solid #55412d;
   border-radius: 7px;
-  background: #25291f;
+  background: #292018;
 }
 .dodos-guide-test h3 {
-  color: #dfcda2;
+  color: #efd1a2;
 }
 .dodos-guide-test p {
-  color: #b2b59d;
+  color: #c9b9a0;
 }
 .dodos-guide-test p:first-child {
   margin-top: 0;

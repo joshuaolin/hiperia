@@ -1,0 +1,33 @@
+# Before using real funds
+
+The [public Devnet beta](https://www.uat.hiperia.xyz/) uses an isolated ORAO VRF program. Its October 31 deployed-byte verification, funded pool, actual purchases and fulfilled random draw are recorded in [the UAT review](./UAT-AUDIT.md#public-devnet-live-verification-october-31-2026). Anonymous access is enabled only for the canonical UAT hostname; project and production protection settings remain unchanged. The existing production website still uses the legacy restricted fixed-result program. These Devnet checks do not establish a reviewed Mainnet lottery or authorize real funds.
+
+## Keep out of GitHub and frontend deployments
+
+- Wallet/deployer/upgrade-authority private keys, seed phrases and keypair JSON files.
+- Real environment files, RPC provider secrets, Airtable tokens, Vercel tokens, OIDC tokens and deployment-protection bypass credentials.
+- Local signing backups, upload buffers, test receipts, logs, caches, tool downloads and generated contract build directories.
+
+The repository's ignore rules and frontend upload allowlist exclude the current local keys, build output and environment files. `.gitignore` cannot remove a credential already committed: if that happens, revoke or rotate it, then address repository history. Do not paste credentials into an issue or chat to verify them.
+
+Source code, public wallet addresses, the program ID, the IDL, tests, lockfiles and an environment-variable template with non-secret placeholders can be public. A smart contract must remain secure when its source and deployed bytes are known.
+
+Variables prefixed with `VITE_` become browser configuration. They must not contain private credentials. Keep signing authority outside the frontend and use narrowly scoped server secrets for external APIs.
+
+The October 29 check found no high-confidence private-key or GitHub-token matches in the 94 currently tracked files. Repository history does contain four old local-validator keypair files under `test-ledger/`. Their public keys do not match the current Devnet deployer. Treat those historical test keys as exposed and never reuse them for a real wallet. This check does not prove that every possible credential format or external repository copy is clean; no history rewrite or credential rotation was performed.
+
+## Protocol and operational requirements
+
+1. Independently review the new verifiable-randomness integration and extend the recorded Devnet checks before a real-fund release. It binds one fresh request to a closed draw and uses rejection sampling for all 420 ordered pairs. Exact deployed bytes and a real oracle fulfillment were verified, with rejection simulations for wrong proofs and rerolls. A positive winning payout on the new VRF program has not yet been observed live; legacy payout evidence is separate. Native Rust/local-validator fixtures remain unrun in this Windows environment. Retain checks of oracle owner/address/seed/client, pre-existing-request rejection and absence of a predictable fallback, and retain the legacy ledger rather than migrating accepted tickets into new rules.
+2. Keep enforceable prize reserves, purchase-time price/prize snapshots, ownership checks and duplicate-claim protection. Draw finalization must not depend on returning funds to a requester, and losing-only reserve cleanup must not depend on the owner's current wallet account type. Reclaim oracle funding only to its immutable original requester; keep winning payouts owner-directed. Bind a buyer's quoted price/configuration revision across signing and upgrades, and establish refunds and outage behavior before taking money.
+3. Review upgrade authority, deployment reproducibility, governance, monitoring and emergency controls. Explorer links provide transparency; they do not remove operator upgrade power.
+4. Budget real hosting, domain, RPC, randomness and maintenance costs. Faucet SOL makes Devnet SOL costs test-only; hosting/RPC/domain services can still incur real charges. The new reveal requester pays oracle fees and rents separately from the prize pool. Full-prize backing limits capacity and valid paid entries can occupy it until settled or refunded. An expected house margin is not a guarantee of profit; legacy fixed results have no random-draw house margin.
+5. Review dependencies and complete an independent security audit before real funds. The current review documents remaining dependency findings and test limitations.
+
+The new program assigns the scheduled price and prize only to exact four-hour slots. Quick draws remain available without a wallet allowlist. Due draws still need an approved oracle-request transaction, oracle fulfillment, a finalization transaction and ticket settlement. The approved completion can include at most six actual losing-ticket releases, reduced to fit the packet budget; a cleanup-read failure must leave valid finalization available. Remaining losses need the explicit one-shot `npm run program:process-vrf-due` operator command, whose default run is read-only. A web countdown cannot execute these operations. No persistent publisher or settlement keeper is configured. Review a funded, monitored operating model before promising automatic public results or continuous capacity.
+
+The new program implements a 24-hour entry-refund path only for open or still-unfulfilled draws. Fulfilled or finalized results cannot use that timeout refund, and accepted winning claims have no expiry. Winning payments and entry refunds require the immutable original recipient to remain a System Program wallet. An owner that changes its account type can therefore retain an unresolved refund's reserve; an undrawn ticket cannot be declared a loss to clear it. Finalization and actual losing-only cleanup are independent of that owner account type. Review outage behavior, immutable recipients, once-only transitions and the treatment of oracle/account costs before taking real funds.
+
+The legacy referral campaign remains on-chain, while the new public game hides it and does not enroll new campaign purchases. No airdrop or cash referral reward is promised. Reintroducing incentives requires a separate economic and abuse review.
+
+See the [security review](./UAT-AUDIT.md), [economics](./DODOS-ECONOMICS.md), and [queued Airtable evaluation](./ROADMAP.md).

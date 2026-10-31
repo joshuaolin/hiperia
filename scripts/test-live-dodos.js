@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { createClient } from "../hiperia_program/scripts/client.js";
+import {
+  createClient,
+  requireCurrentUatRules,
+} from "../hiperia_program/scripts/client.js";
 import { getTicketPda } from "../src/lib/onchain/pdas.js";
 import { getUatDrawTime } from "../src/lib/onchain/time.js";
 
 const { client, provider } = await createClient();
+await requireCurrentUatRules(client);
 const { connection, wallet } = provider;
 const config = await client.getConfig();
 if (!config) throw new Error("Initialize the program before the live test.");

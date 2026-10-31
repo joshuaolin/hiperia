@@ -10,7 +10,11 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
-import { createClient, fundVault } from "../hiperia_program/scripts/client.js";
+import {
+  createClient,
+  fundVault,
+  requireCurrentUatRules,
+} from "../hiperia_program/scripts/client.js";
 import { UAT_ADMIN } from "../src/lib/onchain/DodosClient.js";
 import { DEVNET_GENESIS_HASH } from "../src/lib/network.js";
 import { getResultPda, getTicketPda } from "../src/lib/onchain/pdas.js";
@@ -19,6 +23,7 @@ import { getUatDrawTime } from "../src/lib/onchain/time.js";
 const pause = (milliseconds) =>
   new Promise((resolvePause) => setTimeout(resolvePause, milliseconds));
 const nonce = () => randomBytes(8).readBigUInt64LE().toString();
+const UAT_RESULT = [2, 22];
 
 class SecurityReceipt {
   constructor(details, resumeAfterLosing = false) {
@@ -263,7 +268,7 @@ class UatContractSuite {
       );
       const instructions = await Promise.all(
         Array.from({ length: count }, () =>
-          this.buyInstruction([6, 9], Math.floor(Date.now() / 1_000) + 3_600),
+          this.buyInstruction(UAT_RESULT, getUatDrawTime(Date.now(), 3_600)),
         ),
       );
       await this.simulate(
@@ -277,7 +282,7 @@ class UatContractSuite {
       this.client.publishResult(drawTime),
     );
     const outcome = await this.client.checkTicket(ticket);
-    assert.deepEqual(outcome.numbers, [6, 9]);
+    assert.deepEqual(outcome.numbers, UAT_RESULT);
     assert.equal(outcome.status, name === "winning" ? "won" : "lost");
     if (name === "losing")
       await this.simulate(
@@ -345,11 +350,13 @@ class UatContractSuite {
     assert.equal(ticket.id, purchase.ticketNonce);
     assert.equal(ticket.drawTime, purchase.drawTime);
     assert.equal(ticket.signature, purchase.signature);
+    const previousFixedResult = report.fixedResult ?? [6, 9];
     assert.ok(
       ticket.numbers.length === 2 &&
-        [1, 2].includes(ticket.numbers[0]) &&
-        ticket.numbers[1] === 22,
-      "The saved losing purchase must be the original 1/22 or the current 2/22 test ticket.",
+        (report.fixedResult
+          ? ticket.numbers[0] === 22 && ticket.numbers[1] === 2
+          : [1, 2].includes(ticket.numbers[0]) && ticket.numbers[1] === 22),
+      "The saved losing purchase must match its receipt's test scenario.",
     );
     assert.deepEqual(purchase.numbers, ticket.numbers);
     assert.equal(report.steps.losingPublish.drawTime, ticket.drawTime);
@@ -364,7 +371,7 @@ class UatContractSuite {
     const result = await this.client.getResult(ticket.drawTime);
     assert.ok(result?.isPublished);
     assert.equal(result.drawTime.toString(), String(ticket.drawTime));
-    assert.deepEqual(Array.from(result.numbers), [6, 9]);
+    assert.deepEqual(Array.from(result.numbers), previousFixedResult);
     const outcome = await this.client.checkTicket(ticket);
     assert.equal(outcome.status, "lost");
     const deltas = await this.transactionDeltas(
@@ -403,6 +410,7 @@ class UatContractSuite {
       UAT_ADMIN,
       "Use the UAT administrator wallet.",
     );
+    await requireCurrentUatRules(this.client);
     const config = await this.client.getConfig();
     assert.ok(
       config?.uatEnabled,
@@ -426,6 +434,7 @@ class UatContractSuite {
         tester: config.uatTester,
         costLamports: this.cost,
         payoutLamports: this.payout,
+        fixedResult: UAT_RESULT,
         initial,
       },
       this.resumeAfterLosing,
@@ -433,7 +442,7 @@ class UatContractSuite {
     if (this.resumeAfterLosing) {
       await this.resumeLosingTicket();
     } else {
-      const future = Math.floor(Date.now() / 1_000) + 3_600;
+      const future = getUatDrawTime(Date.now(), 3_600);
       await this.simulate(
         "unauthorized UAT configuration",
         await this.client.program.methods
@@ -454,7 +463,7 @@ class UatContractSuite {
         "unauthorized ticket purchase",
         [
           simulatedFunding,
-          await this.buyInstruction([6, 9], future, nonce(), this.attacker),
+          await this.buyInstruction(UAT_RESULT, future, nonce(), this.attacker),
         ],
         6016,
       );
@@ -477,7 +486,7 @@ class UatContractSuite {
       await this.simulate(
         "past draw purchase",
         await this.buyInstruction(
-          [6, 9],
+          UAT_RESULT,
           Math.floor(Date.now() / 1_000) - 3_600,
         ),
         6010,
@@ -487,9 +496,9 @@ class UatContractSuite {
         await this.publishInstruction(future),
         6008,
       );
-      await this.exerciseTicket("losing", [2, 22], 35);
+      await this.exerciseTicket("losing", [22, 2], 35);
     }
-    await this.exerciseTicket("winning", [6, 9], 25);
+    await this.exerciseTicket("winning", UAT_RESULT, 25);
     const recycleSignature = await this.paid(
       "recycleWinningPrize",
       { lamports: this.payout },

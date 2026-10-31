@@ -1,28 +1,34 @@
 # Hiperia
 
-Dodos on Solana Devnet, with a focused dashboard and optional wallet-signed donations. The mini game, placeholder games, carousel, matrix effects, duplicate files, and unused dependencies have been removed. The UI uses a dark navy and mint palette inspired by [Hyperliquid](https://hyperliquid.xyz/).
+Dodos on Solana Devnet, with ordered number picks, on-chain tickets and results, optional wallet-signed donations, and a Solana purple/green dashboard. Lemon remains disabled with a 2027 coming-soon label.
+
+The [public UAT](https://www.uat.hiperia.xyz/) is deployed on Solana Devnet with the separate [ORAO VRF game program](https://explorer.solana.com/address/6SWK5s22L7HDzvNdFbMhTjtMQNPfUmMzM4D8S3ZRRgRy?cluster=devnet), open to all signing wallets using test SOL. On October 31, 2026, its deployed bytes, funded prize pool, repeated mobile browser purchases and an actual fulfilled random draw were verified. The existing fixed-result program and production website remain separate. See [the verification evidence and limits](./docs/UAT-AUDIT.md#public-devnet-live-verification-october-31-2026). This is a public Devnet beta; draws still need explicit request/completion approvals, and no unattended keeper is configured.
 
 ## Run
 
-Use Node.js 22.12 or newer:
+Use Node.js 24.x:
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Open `http://localhost:5173/` and connect the approved **Devnet** test wallet. The live UAT program records fixed new results **06 → 09**. The frontend shows **06 → 07** only as a target pending a separate on-chain upgrade; until that upgrade, new results remain **06 → 09**. Purchases stay restricted to the tester and administrator, and each ticket reserves a full prize. Existing blockchain records keep their original results. Transactions stay paused in the UI until the on-chain UAT configuration is present. The default RPC is `https://api.devnet.solana.com`; copy [.env.example](./.env.example) to `.env.local` for a custom test RPC. Network verification uses genesis hashes; Mainnet signing actions are disabled.
+Open `http://localhost:5173/`. The default build continues to use the legacy restricted game. For the new public Devnet client, set `VITE_APP_ENV=uat` and `VITE_GAME_VERSION=vrf` before starting Vite. No wallet allowlist is used by the new program. Purchases unlock only after readonly game, access and randomness metadata are verified. Prices, prizes, schedule and available reserves come from chain data. Each accepted ticket reserves its full prize.
+
+The public client retains the legacy program's existing tickets, published history and accepted prizes. It routes claims to the original source program. Legacy fixed results are never relabeled as random. Referral purchases and the referral dashboard are disabled for the new public game; existing legacy attribution remains on-chain.
+
+The default RPC is `https://api.devnet.solana.com`; copy [.env.example](./.env.example) to `.env.local` for a custom test RPC. The new program's signing client verifies the Devnet genesis hash. No Mainnet release is configured.
 
 `http://localhost:5173/dev/dummy-wallet.html` is a development-only, read-only wallet harness. It cannot sign purchases or donations. Use the normal app with a real browser wallet for transactions.
 
 ## UAT on Vercel
 
-[Open UAT](https://www.uat.hiperia.xyz/). Always use this hostname for UAT. This is a Vercel Preview deployment using Solana Devnet and an explicit UAT badge. Vercel authentication is enabled; sign in with the project owner's Vercel account when prompted.
+[Open UAT](https://www.uat.hiperia.xyz/). Always use this hostname for UAT. The verified deployment is Vercel Preview `dpl_BugYtHzn3FWWqJN4u1e1rN4Evmf9`, built with `VITE_APP_ENV=uat`, `VITE_GAME_VERSION=vrf` and `VITE_SOLANA_RPC=https://api.devnet.solana.com`. The canonical hostname was verified with anonymous HTTP 200 and a real browser using live Devnet reads. A protection exception applies only to `www.uat.hiperia.xyz`; project-wide protection, generated Preview protection and production domains/settings were left unchanged. Recheck anonymous loading after each alias update, separately from wallet access.
 
 The project is linked locally to `joshua-olins-projects/hiperia.xyz`. Deploy another UAT preview with:
 
 ```sh
-npx --yes vercel@65.5.0 deploy --yes --environment preview --scope joshua-olins-projects --build-env VITE_SOLANA_RPC=https://api.devnet.solana.com --build-env VITE_APP_ENV=uat
+npx --yes vercel@65.5.0 deploy --yes --environment preview --scope joshua-olins-projects --build-env VITE_SOLANA_RPC=https://api.devnet.solana.com --build-env VITE_APP_ENV=uat --build-env VITE_GAME_VERSION=vrf
 ```
 
 After the Preview is READY, assign its generated URL to the UAT domain:
@@ -34,14 +40,26 @@ npx --yes vercel@65.5.0 inspect https://www.uat.hiperia.xyz --scope joshua-olins
 
 Verify the alias points to the new deployment ID with target `preview` and status `READY`, then open the custom URL and check the app before reporting completion. Keep production domains unchanged. The custom domain is also configured for the Git branch `uat` for branch deployments. [AGENTS.md](./AGENTS.md) records this workflow for future sessions.
 
-[.vercelignore](./.vercelignore) allows frontend source, public assets, the UAT RPC function, and required build configuration. Local keypairs, backend build files, development harnesses, caches, and environment files are excluded from uploads. The Preview-only [RPC function](./api/solana.js) forwards bounded app requests to the fixed Devnet endpoint so browsers do not call the public RPC directly. Confirmation uses HTTP polling. Its cache and throttle are per function instance; the public upstream can still rate-limit.
+[.vercelignore](./.vercelignore) allows frontend source, public assets, the UAT RPC function, and required build configuration. Local keypairs, backend build files, development harnesses, caches, and environment files are excluded from uploads. The [RPC function](./api/solana.js) serves UAT Preview and explicitly opted-in production Devnet demo deployments, forwarding bounded app requests to the fixed Devnet endpoint. Confirmation uses HTTP polling. Its cache and throttle are per function instance; the public upstream can still rate-limit.
 
-## Deployed Devnet program
+## Production hostname as a Devnet demo
+
+Publish to the production hostname only when explicitly requested. The website remains a restricted Devnet demo; this does not launch a Mainnet game. Stage the build before assigning production aliases:
+
+```sh
+npx --yes vercel@65.5.0 deploy --prod --skip-domain --yes --scope joshua-olins-projects --build-env VITE_SOLANA_RPC=https://api.devnet.solana.com --build-env VITE_APP_ENV=testnet-demo --env HIPERIA_TESTNET_DEMO=1
+```
+
+Verify the staged deployment loads the Devnet rules and actual history, then use `vercel promote <ready-production-url> --yes --scope joshua-olins-projects`. The server-side flag enables the bounded, same-origin, fixed-Devnet proxy on the existing production hosts. Both flags are required; no Mainnet RPC or server wallet is configured. Keep the canonical UAT alias on its separate Preview deployment.
+
+## Legacy Devnet program and historical verification
 
 - Program: [HDodgjBzz7Fo2irAU1ahf5X2arwr773ZcHXD3iSb7nmQ](https://explorer.solana.com/address/HDodgjBzz7Fo2irAU1ahf5X2arwr773ZcHXD3iSb7nmQ?cluster=devnet)
 - Prize vault: `DYmcQeHB9kdf7GLMjcbtbudiNnLTNkxxvvTyqcWTRyDo`
-- Ticket: 0.0072 SOL, plus ticket account rent and network fees.
-- Exact ordered match: 1 SOL. The vault received 1.1 Devnet SOL for testing.
+- Quick draw: 0.0072 SOL entry, 1 SOL exact-match prize.
+- Scheduled draw: 0.00625 SOL entry, 2 SOL exact-match prize.
+- Daily slots: 2 AM, 6 AM, 10 AM, 2 PM, 6 PM and 10 PM, Manila time.
+- Ticket account rent and network fees are additional. The vault uses faucet SOL for testing.
 
 On October 27, 2026, a [live ticket purchase](https://explorer.solana.com/tx/4TT25P1DPLmREHU4eKFyo3Kd3xWhN47BwVELDYm5aM5ehMmYhkADEfajq1VsjDLsXvfwXdFHPaNvLcfpwQz4nayY?cluster=devnet) was confirmed and its exact wallet deduction verified:
 
@@ -56,19 +74,34 @@ The test picked `1–22`; the published result was `19–3`. [Result publication
 
 On October 28, 2026, the fixed-result UAT upgrade was deployed and its exact binary verified. The approved tester is `Ghxn7ree6MFQxC8hFTJ8Lo319xEZzqVFLcmDLKVFpPaa`. Ten adversarial simulations, a losing ticket closure, and a [winning 1 SOL payout](https://explorer.solana.com/tx/3Y1mCtqT8c8pEApZDhYV3cCTnx3b7kb3arnKHXQxMD5NYeFsY59BwNVhJUSGLmYpbGe4K8pVhWhjsWxTi4XVwgnp?cluster=devnet) passed. The winning wallet increased by 0.999995 SOL after its network fee. The test prize was recycled into the vault, then another 2 Devnet SOL was added for testing. See the [UAT review](./docs/UAT-AUDIT.md) for transaction evidence and limits.
 
-## Play and donate
+Revision 3 was [upgraded on October 29, 2026](https://explorer.solana.com/tx/5g6C48Tb8U9Y4zcCUivwE6L9u65Pa7tYDhySN7RTKkjcDHwt3fgv9JjabJQjTXPKhtzsCSSmMkVRencVngNSwnwQ?cluster=devnet). Its 331,696-byte ELF and zero-filled allocation tail were verified against ProgramData. All six scheduled offers, result metadata and reserve limits passed thirteen read-only BPF simulations. New losing/winning quick flows and ten rejection probes also passed, including an actual [02 → 22 prize claim](https://explorer.solana.com/tx/gym5ye7NRQSWzhFcRVoAkZf2tUYC8cyvRew3bHVZGJ3dNcHFUUrBbQ1qqmcx8iSWprAzugQnKiP6m3pUp9oGeLH?cluster=devnet). The 2 SOL scheduled prize was simulated; it was not live-claimed while waiting for a future slot.
 
-1. Select two different numbers from 1 to 22. Order matters: 06 → 07 differs from 07 → 06.
-2. Choose an exact dated 2 PM or 4 PM draw, UTC+8. One ticket covers one draw; it cannot be reused for both. The 60-second option is a UAT testing shortcut with the same prize.
+## Public Devnet flow
+
+1. Select two different numbers from 02 to 22. Order matters: 02 → 22 differs from 22 → 02.
+2. Choose one exact dated draw from the six four-hour slots, UTC+8, or an approximately 60-second quick draw. One ticket covers one occurrence. Scheduled entry is 0.00625 SOL for a 2 SOL prize; quick entry stays 0.0072 SOL for a 1 SOL prize.
 3. Sign before the selected draw starts. The countdown updates every second; the chain rejects late purchases without collecting the ticket price. Failed transactions can still cost a network fee.
-4. **View result** reads the chain for free. **Record draw result** creates the fixed result after the draw and costs a network fee plus account rent. It does not let the wallet choose the numbers.
-5. **Claim prize** transfers a winning payout. **Close ticket** settles a loss without a prize and releases reserved capacity. Both cost a network fee. UAT claims have no deadline after the draw.
+4. After sales close, **Review reveal costs** reads the oracle fee and account rent without submitting a transaction. **Reveal result** requests ORAO randomness using wallet-approved funding separate from the prize pool. Once fulfilled, **Complete draw** records the numbers; it can require a second approval. That completion approval may also release a bounded batch of losing reserves. **Refresh** and **Check oracle status** only read chain data. One accepted request is bound to each draw; no reroll or fixed-number fallback is offered.
+5. Open **Win** in Your tickets and use **Claim prize** or **Claim all**. Claims use each ticket's purchase-time prize; a large selection may need several approvals. **Ongoing** contains upcoming/unpublished tickets; **Done** contains paid prizes, known losses and refunded entries. WIN, LOSS and REFUNDED labels follow actual account state. There is no manual Close ticket button. Accepted winning prizes have no claim deadline.
+6. If an open draw or unfulfilled oracle request passes the on-chain 24-hour timeout, an eligible ticket offers **Refund entry**. The actual entry payment is refunded to its immutable owner. Network fees and account rent are separate. A fulfilled or finalized result cannot use this timeout refund.
+
+New public draws use the pinned [ORAO VRF program](https://explorer.solana.com/address/VRFzZoJdhFWL8rkvu87LpKM3RbcVezpMEc6X5GVDr7y?cluster=devnet). Request submission checks the pinned executable oracle; finalization validates the request's pinned program owner, address, draw seed, client and fulfilled state, then uses rejection sampling for 420 ordered pairs from distinct numbers 02–22. Draw results link both the result and oracle accounts. The first requester pays oracle costs. Any reclaimed unused funding goes only to that original requester; returning it must not block result finalization. Current costs are read from Devnet before approval.
+
+Both programs permit owner-directed settlement without requiring the ticket owner's signature; prizes can only reach the immutable owner. Losing reserves are released by confirmed settlement transactions, not by displaying a ticket under Done. There is no unattended keeper. The legacy one-shot processor, `npm run program:process-due`, handles only the old program. Pass `-- --include-wins` only when intending to pay outstanding legacy prizes directly to their owners. It persists signed receipts before broadcast and stops on ambiguous outcomes.
+
+The new completion transaction can include up to six unsettled losing tickets from that exact draw, reduced to fit the transaction size. Their outcome is derived from the fulfilled oracle proof; winning, settled and refunded tickets are excluded. Optional cleanup read failures do not prevent valid result finalization. Remaining losses can be processed through the explicit public-game one-shot processor, `npm run program:process-vrf-due`; its default run is read-only. See [operator limits and execution requirements](./docs/UAT-AUDIT.md#public-devnet-one-shot-operations). No separate Close ticket approval or automatic signing is introduced.
 
 Tickets and results come from the chain. Prices and payout amounts come from the program config. Ticket and draw history links open their blockchain accounts. Purchases pause when the vault cannot reserve another full prize. For example, roughly 1.1 SOL can back one outstanding 1 SOL ticket; additional funds provide more capacity.
 
+Multiple tickets for the same scheduled occurrence are allowed, each with a fresh purchase nonce. Daily tickets reserve 2 SOL each and quick tickets reserve 1 SOL each under the current rules. A vault that can back two quick entries may only back one daily entry. Outstanding wins remain fully backed until paid; only losing reserves can be recycled without a prize payout. Pending tickets can consume capacity until their draw is due, so permissionless settlement does not replace exposure controls for a future public game.
+
 Manual Refresh has an eight-second cooldown and shares in-flight reads. Temporary 429 responses trigger an increasing retry delay, up to one minute, while preserving the same wallet's last loaded data. Confirmed transactions request a fresh read; no transaction is automatically resent.
 
-Read the [UAT security review and payout math](./docs/UAT-AUDIT.md) before considering real funds. The fixed UAT result is deliberately predictable. It is not a production randomizer, and the 462-outcome count does not establish exploit resistance.
+Read the [UAT security review](./docs/UAT-AUDIT.md) and [economics](./docs/DODOS-ECONOMICS.md) before considering real funds. The legacy fixed result is deliberately predictable. The new random game has 420 ordered outcomes; that count alone does not establish exploit resistance or guarantee profit. Full reserves also create finite capacity: a funded public wallet can occupy available backing with valid paid entries until settlement or an eligible refund.
+
+Draw history is loaded from program-owned result accounts, with local date/session filters and blockchain links. New result records snapshot their offer; older rows keep their recorded combinations instead of taking the current fixed pair. Mobile date inputs use full-width controls and validate inclusive Manila date ranges. Search and pagination do not send new RPC scans.
+
+See [production/GitHub precautions](./docs/PRODUCTION-READINESS.md) and the [queued Airtable evaluation](./docs/ROADMAP.md). Airtable is not connected and is not required for current on-chain settlement.
 
 If purchase confirmation is interrupted, the browser keeps the purchase ID and checks its on-chain ticket before retrying. Retries reuse that ID, so the contract can accept only one purchase for it. Refresh checks the pending ticket without sending another transaction.
 
@@ -99,7 +132,16 @@ npm run program:build:remote
 npm run program:verify-abi
 ```
 
-The Windows installer downloads a pinned official Agave release and verifies its SHA-256 checksum. The remote build sends only Rust source to Solana Playground and uses its server-selected legacy Anchor dependencies. It is not a reproducible build of the locally pinned crate version. Its compiled instruction/account ABI is checked against the frontend IDL before use. The current Devnet deployment used this fallback and passed the live purchase, publish, and losing-ticket settlement test.
+The Windows installer downloads a pinned official Agave release and verifies its SHA-256 checksum. The remote build sends only Rust source to Solana Playground and uses its server-selected legacy Anchor dependencies. It is not a reproducible build of the locally pinned crate version. Its compiled instruction/account ABI is checked against the frontend IDL before use. The legacy Devnet deployment used this fallback and passed its recorded live tests.
+
+The new program has a separate source, IDL, binary and build manifest. Its October 31 deployment has a verified 428,992-byte ELF and a 10 Devnet SOL initial prize allocation, separate from legacy funds. Existing program keys must be reused; never generate a replacement key for an upgrade. Build and compare its ABI with:
+
+```sh
+npm run program:build:vrf
+npm run program:verify:vrf
+```
+
+These commands do not deploy, initialize or fund a program. Do not run the legacy initialize/configure/demo commands against the new program: the account and instruction interfaces differ. The new program's native contract fixtures are under [the VRF test suite](./hiperia_program/tests/hiperia_vrf.test.js).
 
 Native Windows validator testing encountered operating-system privilege and genesis extraction errors. Local-validator and Rust tests require a supported Linux/WSL setup; unit and browser checks do not.
 
@@ -131,13 +173,17 @@ npm test
 npm run build
 npm run test:ui
 npm run test:ui:uat
+node scripts/test-ui-vrf.js
 ```
 
 The browser check needs the dev server running and Google Chrome installed. It checks 320, 390, 768 and 1440px layouts, selection limits, donation validation, and blocked keypair URLs. Screenshots go into ignored `test-results/`.
 
-- [DodosClient](./src/lib/onchain/DodosClient.js): Anchor transactions and account queries.
+- [Public client](./src/lib/onchain/PublicDodosClient.js): new purchases plus source-routed legacy tickets, results and claims.
+- [VRF client](./src/lib/onchain/VrfDodosClient.js): draw requests, verified oracle reads, finalization and refunds.
+- [Oracle client](./src/lib/onchain/OracleClient.js): on-chain fee quotes, request derivation and proof decoding.
+- [Legacy client](./src/lib/onchain/DodosClient.js): original restricted-program transactions and account queries.
 - [Dodos UI hook](./src/games/dodos/useDodosGame.js): state, selections, refreshes, and transaction feedback.
 - [Donation client](./src/components/donation.js): exact amount validation and wallet-signed transfers.
 - [Network utilities](./src/lib/network.js): cluster verification and shared UI network reads.
 
-This is a restricted fixed-result test-network demo. The upgraded source removes timestamp randomness, gates initialization/tester changes to the administrator, and gates purchases/publication to the administrator and tester. Winning payouts preserve rent and other tickets' reserved prizes. Public real-fund use requires a separately reviewed randomness and liability design. See the [UAT review](./docs/UAT-AUDIT.md) for limits and verification status.
+Public Devnet testing is separate from a real-fund launch. Both source programs preserve accepted prize snapshots and other tickets' reserves. The administrator retains upgrade authority. An independent review, reproducible deployment process, operational monitoring and a reviewed liability design remain required before real funds. See the [UAT review](./docs/UAT-AUDIT.md) for verification status and limitations.

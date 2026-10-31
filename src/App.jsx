@@ -3,6 +3,7 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Dodos from "./games/dodos/Dodos";
+import BackToTop from "./components/BackToTop";
 
 export default function App() {
   const [activeSection, setActiveSection] = useState(() =>
@@ -50,6 +51,23 @@ export default function App() {
               <span className="nav-active-dot" aria-hidden="true" />
             )}
           </a>
+          <button
+            className="nav-item nav-item-disabled"
+            type="button"
+            disabled
+            aria-label="Lemon, coming in 2027"
+          >
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path
+                d="M4 13c-2-4 1-9 5-9l2-1 1 2c4 2 5 7 2 10l-2 2-2-1c-3 1-5-1-6-3Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+            </svg>
+            <span className="nav-coming-label">
+              Lemon <small>Coming 2027</small>
+            </span>
+          </button>
           <a
             className={`nav-item${activeSection === "support" ? " nav-item-active" : ""}`}
             href="#support"
@@ -88,6 +106,7 @@ export default function App() {
         </main>
         <Footer />
       </div>
+      <BackToTop />
     </div>
   );
 }

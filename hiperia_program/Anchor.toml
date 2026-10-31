@@ -1,18 +1,19 @@
 [toolchain]
+anchor_version = "0.31.1"
 
 [features]
 resolution = true
 skip-lint = false
 
-[programs.devnet]
-hiperia_program = "4BqH8D4WRxthkMBKjyFHoWVBbrogaCWJf8oC2tV2HGnR"
+[programs.localnet]
+hiperia_program = "HDodgjBzz7Fo2irAU1ahf5X2arwr773ZcHXD3iSb7nmQ"
 
-[registry]
-url = "https://anchor.projectserum.com"
+[programs.devnet]
+hiperia_program = "HDodgjBzz7Fo2irAU1ahf5X2arwr773ZcHXD3iSb7nmQ"
 
 [provider]
 cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "anchor test"
+test = "node --test tests/hiperia.test.js"

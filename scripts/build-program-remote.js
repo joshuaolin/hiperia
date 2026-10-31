@@ -3,10 +3,24 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { PublicKey } from "@solana/web3.js";
 
 const source = readFileSync(
-  "hiperia_program/programs/hiperia_program/src/lib.rs",
+  process.argv.includes("--vrf")
+    ? "hiperia_program/programs/hiperia_vrf/src/lib.rs"
+    : "hiperia_program/programs/hiperia_program/src/lib.rs",
   "utf8",
 );
-const idl = JSON.parse(readFileSync("src/idl/hiperia_program.json", "utf8"));
+const vrf = process.argv.includes("--vrf");
+const buildDirectory = vrf
+  ? "hiperia_program/target/vrf-build"
+  : "hiperia_program/target/build";
+const binaryPath = vrf
+  ? "hiperia_program/target/deploy/hiperia_vrf.so"
+  : "hiperia_program/target/deploy/remote-compiled.so";
+const idl = JSON.parse(
+  readFileSync(
+    vrf ? "src/idl/hiperia_vrf.json" : "src/idl/hiperia_program.json",
+    "utf8",
+  ),
+);
 const endpoint = "https://api.solpg.io";
 if (!source.includes(`declare_id!("${idl.address}")`))
   throw new Error("Synchronize the program ID before building.");
@@ -20,8 +34,8 @@ const response = await fetch(`${endpoint}/build`, {
   signal: AbortSignal.timeout(180_000),
 });
 const text = await response.text();
-mkdirSync("hiperia_program/target/build", { recursive: true });
-writeFileSync("hiperia_program/target/build/remote-response.json", text);
+mkdirSync(buildDirectory, { recursive: true });
+writeFileSync(`${buildDirectory}/remote-response.json`, text);
 if (!response.ok)
   throw new Error(
     `Remote compiler returned HTTP ${response.status}. See the local build report.`,
@@ -50,13 +64,13 @@ if (
   );
 }
 mkdirSync("hiperia_program/target/deploy", { recursive: true });
-writeFileSync("hiperia_program/target/deploy/remote-compiled.so", bytes);
+writeFileSync(binaryPath, bytes);
 writeFileSync(
-  "hiperia_program/target/build/remote-idl.json",
+  `${buildDirectory}/remote-idl.json`,
   JSON.stringify(result.idl, null, 2),
 );
 writeFileSync(
-  "hiperia_program/target/build/build-manifest.json",
+  `${buildDirectory}/build-manifest.json`,
   JSON.stringify(
     {
       builder: endpoint,

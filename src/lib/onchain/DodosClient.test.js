@@ -5,12 +5,16 @@ import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
 import { DodosClient, UAT_ADMIN } from "./DodosClient.js";
 import { PROGRAM_ID } from "./idl.js";
 import { getTicketPda, getResultPda, u64LeBytes, i64LeBytes } from "./pdas.js";
-import { getNextDrawTime } from "./time.js";
+import { getNextDrawTime, getUatDrawTime } from "./time.js";
 
 const NOW = Date.parse("2026-10-27T05:00:00Z");
 const NONCE = "18446744073709551615";
 
-function fixture({ storage = null, publicKey = SystemProgram.programId } = {}) {
+function fixture({
+  storage = null,
+  publicKey = SystemProgram.programId,
+  nonceFactory = () => NONCE,
+} = {}) {
   const calls = {};
   const wallet = {
     publicKey,
@@ -22,9 +26,15 @@ function fixture({ storage = null, publicKey = SystemProgram.programId } = {}) {
     account: {
       config: { fetchNullable: async () => calls.config ?? null },
       ticket: {
-        all: async () => calls.ticketEntries ?? [],
-        fetchNullable: async () => {
+        all: async () =>
+          (calls.ticketEntries ?? []).map((entry) => ({
+            ...entry,
+            account: { user: wallet.publicKey, ...entry.account },
+          })),
+        fetchNullable: async (address) => {
           if (calls.ticketReadFailure) throw calls.ticketReadFailure;
+          if (calls.savedTickets)
+            return calls.savedTickets.get(address.toBase58()) ?? null;
           return calls.savedTicket ?? null;
         },
       },
@@ -59,8 +69,11 @@ function fixture({ storage = null, publicKey = SystemProgram.programId } = {}) {
           accountsStrict: (accounts) => {
             calls.accounts = accounts;
             return {
-              rpc: async () => {
+              rpc: async (options) => {
+                calls.purchaseOptions = options;
                 calls.submissions = (calls.submissions ?? 0) + 1;
+                calls.purchaseAddresses ??= [];
+                calls.purchaseAddresses.push(accounts.ticket.toBase58());
                 if (calls.landPurchase)
                   calls.savedTicket = {
                     user: wallet.publicKey,
@@ -68,6 +81,11 @@ function fixture({ storage = null, publicKey = SystemProgram.programId } = {}) {
                     drawTime,
                     settled: false,
                   };
+                if (calls.landPurchase && calls.savedTickets)
+                  calls.savedTickets.set(
+                    accounts.ticket.toBase58(),
+                    calls.savedTicket,
+                  );
                 if (calls.purchaseFailure) throw calls.purchaseFailure;
                 return "signature";
               },
@@ -102,8 +120,23 @@ function fixture({ storage = null, publicKey = SystemProgram.programId } = {}) {
       program,
       wallet,
       now: () => NOW,
-      nonceFactory: () => NONCE,
+      nonceFactory,
       storage,
+      rulesLoader: async () => {
+        calls.rulesReads = (calls.rulesReads ?? 0) + 1;
+        if (calls.rulesFailure) throw calls.rulesFailure;
+        return (
+          calls.rules ?? {
+            revision: 3,
+            quickTicketCostLamports: new BN(7_200_000),
+            dailyTicketCostLamports: new BN(6_250_000),
+            quickPayoutLamports: new BN(1_000_000_000),
+            dailyPayoutLamports: new BN(2_000_000_000),
+            winningNumbers: [2, 22],
+            dailyHours: [2, 6, 10, 14, 18, 22],
+          }
+        );
+      },
     }),
   };
 }
@@ -121,14 +154,27 @@ test("real Anchor 0.31 client accepts this IDL and exposes the result account", 
 test("fixed UAT mode is advertised only after the on-chain tester is configured", async () => {
   const { client, calls } = fixture();
   assert.equal(await client.getConfig(), null);
-  calls.config = { padding: Array(32).fill(0) };
+  calls.config = {
+    padding: Array(32).fill(0),
+    ticketCostLamports: new BN(7_200_000),
+    payoutLamports: new BN(1_000_000_000),
+  };
   assert.equal((await client.getConfig()).uatEnabled, false);
+  assert.equal(calls.rulesReads, undefined);
   const tester = new PublicKey("Ghxn7ree6MFQxC8hFTJ8Lo319xEZzqVFLcmDLKVFpPaa");
   calls.config.padding = Array.from(tester.toBytes());
   const config = await client.getConfig();
   assert.equal(config.uatEnabled, true);
   assert.equal(config.uatTester, tester.toBase58());
   assert.equal(config.uatAdmin, UAT_ADMIN);
+  assert.deepEqual(config.winningNumbers, [2, 22]);
+  assert.equal(config.dailyTicketCostLamports.toString(), "6250000");
+  assert.equal(config.rulesRevision, 3);
+  calls.rulesFailure = Error("429 Too many requests");
+  await assert.rejects(client.getConfig(), /429/);
+  calls.rulesFailure = null;
+  calls.config.ticketCostLamports = new BN(1);
+  await assert.rejects(client.getConfig(), /prices do not match/);
 });
 
 test("only the UAT administrator can request a tester change", async () => {
@@ -192,8 +238,78 @@ test("draw history retains old recorded numbers while recent results stay limite
   const history = await client.getResults();
   assert.equal(history.length, 5);
   assert.deepEqual(history[0].numbers, [6, 9]);
+  assert.equal(history[0].payoutLamports, null);
+  assert.equal(history[0].drawType, null);
   assert.deepEqual(history[4].numbers, [5, 20]);
   assert.equal((await client.getRecentResults()).length, 3);
+});
+
+test("result history decodes only valid recorded mode and price snapshots", async () => {
+  const { client, calls, program, wallet } = fixture();
+  const padding = Buffer.alloc(32);
+  padding[0] = 1;
+  padding[1] = 1;
+  padding.writeBigUInt64LE(2_000_000_000n, 2);
+  padding.writeBigUInt64LE(6_250_000n, 10);
+  const invalidTail = Buffer.from(padding);
+  invalidTail[31] = 1;
+  const invalidMode = Buffer.from(padding);
+  invalidMode[1] = 2;
+  const invalidAmount = Buffer.from(padding);
+  invalidAmount.writeBigUInt64LE(0n, 2);
+  const unsafeAmount = Buffer.from(padding);
+  unsafeAmount.writeBigUInt64LE(9_007_199_254_740_992n, 2);
+  calls.resultEntries = [
+    padding,
+    Buffer.alloc(32),
+    invalidTail,
+    invalidMode,
+    invalidAmount,
+    unsafeAmount,
+  ].map((bytes, index) => {
+    const drawTime = new BN(NOW / 1000 - index * 60);
+    return {
+      publicKey: getResultPda(drawTime, program.programId)[0],
+      account: {
+        drawTime,
+        numbers: index ? [6, 9] : [2, 22],
+        isPublished: true,
+        padding: bytes,
+      },
+    };
+  });
+  const results = await client.getResults();
+  assert.equal(results[0].drawType, "daily");
+  assert.equal(results[0].payoutLamports, 2_000_000_000);
+  assert.equal(results[0].ticketCostLamports, 6_250_000);
+  assert.deepEqual(results[0].numbers, [2, 22]);
+  for (const result of results.slice(1)) {
+    assert.equal(result.drawType, null);
+    assert.equal(result.payoutLamports, null);
+    assert.equal(result.ticketCostLamports, null);
+    assert.deepEqual(result.numbers, [6, 9]);
+  }
+  const drawTime = calls.resultEntries[0].account.drawTime;
+  calls.results = new Map([[results[0].id, calls.resultEntries[0].account]]);
+  calls.ticketEntries = [
+    {
+      publicKey: getTicketPda(wallet.publicKey, 1, program.programId)[0],
+      account: {
+        nonce: new BN(1),
+        numbers: [2, 22],
+        drawTime,
+        settled: false,
+        paidLamports: new BN(6_250_000),
+        padding: Buffer.alloc(32),
+      },
+    },
+  ];
+  const [ticket] = await client.getTickets({
+    payoutLamports: new BN(1_000_000_000),
+  });
+  assert.equal(ticket.result.drawType, "daily");
+  assert.equal(ticket.result.payoutLamports, 2_000_000_000);
+  assert.equal(ticket.result.ticketCostLamports, 6_250_000);
 });
 
 function memoryStorage() {
@@ -204,6 +320,133 @@ function memoryStorage() {
     removeItem: (key) => entries.delete(key),
   };
 }
+
+for (const [mode, drawTime] of [
+  ["daily", getNextDrawTime(NOW)],
+  ["quick", getUatDrawTime(NOW)],
+]) {
+  test(`two consecutive ${mode} entries for the same draw use independent ticket identities`, async () => {
+    const storage = memoryStorage();
+    let nonce = 0;
+    const { client, calls } = fixture({
+      storage,
+      nonceFactory: () => String(++nonce),
+    });
+    calls.landPurchase = true;
+    calls.savedTickets = new Map();
+    const first = await client.buyTicket([2, 3], { drawTime });
+    const second = await client.buyTicket([3, 2], { drawTime });
+    assert.equal(first.drawTime, second.drawTime);
+    assert.notEqual(first.id, second.id);
+    assert.equal(calls.submissions, 2);
+    assert.equal(new Set(calls.purchaseAddresses).size, 2);
+    assert.equal(calls.savedTickets.size, 2);
+    assert.equal(client.getPendingPurchase(), null);
+    assert.equal(storage.getItem(client.purchaseKey), null);
+    assert.deepEqual(calls.purchaseOptions, { maxRetries: 0 });
+  });
+}
+
+test("rapid purchase calls cannot open a second transaction while the first wallet approval is pending", async () => {
+  let nonce = 0;
+  const { client, calls, program } = fixture({
+    nonceFactory: () => String(++nonce),
+  });
+  const original = program.methods.buyTicket;
+  let release;
+  let reached;
+  const approval = new Promise((resolve) => {
+    release = resolve;
+  });
+  const submitted = new Promise((resolve) => {
+    reached = resolve;
+  });
+  program.methods.buyTicket = (...args) => {
+    const method = original(...args);
+    return {
+      accountsStrict: (accounts) => {
+        const builder = method.accountsStrict(accounts);
+        return {
+          rpc: async (options) => {
+            reached();
+            await approval;
+            return builder.rpc(options);
+          },
+        };
+      },
+    };
+  };
+  const first = client.buyTicket([2, 3]);
+  await submitted;
+  await assert.rejects(client.buyTicket([3, 2]), /already waiting/);
+  release();
+  const confirmed = await first;
+  const next = await client.buyTicket([3, 2]);
+  assert.notEqual(confirmed.id, next.id);
+  assert.equal(calls.submissions, 2);
+});
+
+test("completed mobile purchases stay cleared across reload if storage removal fails", async () => {
+  const entries = memoryStorage();
+  const storage = {
+    ...entries,
+    removeItem: () => {
+      throw Error("Storage removal unavailable");
+    },
+  };
+  const { client, calls, wallet, program } = fixture({ storage });
+  calls.landPurchase = true;
+  calls.savedTickets = new Map();
+  const first = await client.buyTicket([2, 3]);
+  assert.equal(storage.getItem(client.purchaseKey), "");
+  const reloaded = new DodosClient({
+    program,
+    wallet,
+    storage,
+    now: () => NOW,
+    nonceFactory: () => "123",
+  });
+  assert.equal(reloaded.getPendingPurchase(), null);
+  const next = await reloaded.buyTicket([3, 2]);
+  assert.notEqual(first.id, next.id);
+  assert.equal(next.recovered, undefined);
+  assert.equal(calls.submissions, 2);
+});
+
+test("pending purchase storage is scoped to the connected wallet", async () => {
+  const storage = memoryStorage();
+  const first = fixture({ storage });
+  first.calls.purchaseFailure = Error("Confirmation unavailable");
+  await assert.rejects(first.client.buyTicket([2, 3]), /same purchase ID/);
+  const second = fixture({
+    storage,
+    publicKey: new PublicKey(UAT_ADMIN),
+    nonceFactory: () => "123",
+  });
+  assert.equal(second.client.getPendingPurchase(), null);
+  await second.client.buyTicket([3, 2]);
+  assert.equal(second.calls.submissions, 1);
+  const restored = fixture({ storage });
+  assert.equal(restored.client.getPendingPurchase().id, NONCE);
+  assert.equal(restored.calls.submissions, undefined);
+});
+
+test("a standard-fee purchase can explicitly avoid creating a referral profile", async () => {
+  const { client, calls } = fixture();
+  client.referrals.purchaseRules = async () => {
+    throw Error("Referral metadata is unavailable");
+  };
+  client.referrals.preparePurchase = async () => {
+    throw Error("A standard purchase must not create a referral account");
+  };
+  const receipt = await client.buyTicket([2, 3], {
+    useReferrals: false,
+    config: { rulesRevision: 4 },
+  });
+  assert.equal(receipt.signature, "signature");
+  assert.equal(calls.submissions, 1);
+  assert.equal(calls.accounts.profile, undefined);
+});
 
 test("a confirmed purchase is recovered after a timeout and reload without sending again", async () => {
   const storage = memoryStorage();
@@ -226,6 +469,11 @@ test("a confirmed purchase is recovered after a timeout and reload without sendi
   assert.deepEqual(recovered.numbers, [2, 22]);
   assert.equal(calls.submissions, 1);
   assert.equal(reloaded.getPendingPurchase(), null);
+  calls.purchaseFailure = null;
+  const next = await reloaded.buyTicket([2, 3]);
+  assert.equal(next.id, "123");
+  assert.notEqual(next.id, recovered.id);
+  assert.equal(calls.submissions, 2);
 });
 
 test("retrying an unresolved purchase reuses its nonce and PDA", async () => {
@@ -325,18 +573,18 @@ test("PDA integers distinguish unsigned ticket nonce from signed draw time", () 
   assert.throws(() => i64LeBytes("9223372036854775808"), RangeError);
 });
 
-test("daily Dodos schedule advances at 14:00 and 16:00 UTC+8", () => {
+test("daily Dodos schedule advances every four hours in UTC+8", () => {
   assert.equal(
     getNextDrawTime(Date.parse("2026-10-27T05:59:59Z")),
     Date.parse("2026-10-27T06:00:00Z") / 1000,
   );
   assert.equal(
     getNextDrawTime(Date.parse("2026-10-27T06:00:00Z")),
-    Date.parse("2026-10-27T08:00:00Z") / 1000,
+    Date.parse("2026-10-27T10:00:00Z") / 1000,
   );
   assert.equal(
     getNextDrawTime(Date.parse("2026-10-27T08:00:00Z")),
-    Date.parse("2026-10-28T06:00:00Z") / 1000,
+    Date.parse("2026-10-27T10:00:00Z") / 1000,
   );
 });
 

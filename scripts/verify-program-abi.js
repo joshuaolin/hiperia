@@ -3,13 +3,26 @@ import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { PublicKey } from "@solana/web3.js";
 
+const vrf = process.argv.includes("--vrf");
 const frontend = JSON.parse(
-  readFileSync("src/idl/hiperia_program.json", "utf8"),
+  readFileSync(
+    vrf ? "src/idl/hiperia_vrf.json" : "src/idl/hiperia_program.json",
+    "utf8",
+  ),
 );
 const compiled = JSON.parse(
-  readFileSync("hiperia_program/target/build/remote-idl.json", "utf8"),
+  readFileSync(
+    vrf
+      ? "hiperia_program/target/vrf-build/remote-idl.json"
+      : "hiperia_program/target/build/remote-idl.json",
+    "utf8",
+  ),
 );
-const binary = readFileSync("hiperia_program/target/deploy/remote-compiled.so");
+const binary = readFileSync(
+  vrf
+    ? "hiperia_program/target/deploy/hiperia_vrf.so"
+    : "hiperia_program/target/deploy/remote-compiled.so",
+);
 assert.equal(binary.subarray(0, 4).toString("hex"), "7f454c46");
 assert.ok(
   binary.includes(new PublicKey(frontend.address).toBuffer()),
@@ -18,6 +31,20 @@ assert.ok(
 const normalize = (value) => value.replaceAll("_", "").toLowerCase();
 function type(value) {
   if (value === "publicKey") return "pubkey";
+  if (Array.isArray(value)) return value.map(type);
+  if (value && typeof value === "object") {
+    if (value.defined)
+      return {
+        defined: normalize(
+          typeof value.defined === "string"
+            ? value.defined
+            : value.defined.name,
+        ),
+      };
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, type(entry)]),
+    );
+  }
   return value;
 }
 for (const instruction of compiled.instructions) {
@@ -39,22 +66,29 @@ for (const instruction of compiled.instructions) {
     instruction.args.map((arg) => [normalize(arg.name), type(arg.type)]),
   );
   assert.deepEqual(
+    type(current.returns ?? null),
+    type(instruction.returns ?? null),
+  );
+  assert.deepEqual(
     current.accounts.map((account) => [
       normalize(account.name),
       !!account.writable,
       !!account.signer,
+      !!account.optional,
     ]),
     instruction.accounts.map((account) => [
       normalize(account.name),
       account.isMut,
       account.isSigner,
+      !!account.isOptional,
     ]),
   );
 }
-for (const account of compiled.accounts) {
+for (const account of [...compiled.accounts, ...(compiled.types ?? [])]) {
   const current = frontend.types.find(
     (entry) => normalize(entry.name) === normalize(account.name),
   );
+  assert.ok(current, `Missing compiled type: ${account.name}`);
   assert.deepEqual(
     current.type.fields.map((field) => [
       normalize(field.name),

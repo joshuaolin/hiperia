@@ -21,14 +21,14 @@ if (!globalThis.process) globalThis.process = { env: {} };
 
 const endpoint =
   import.meta.env.VITE_SOLANA_RPC || "https://api.devnet.solana.com";
-const useUatProxy =
-  import.meta.env.VITE_APP_ENV === "uat" &&
+const useDevnetProxy =
+  ["uat", "testnet-demo"].includes(import.meta.env.VITE_APP_ENV) &&
   endpoint === "https://api.devnet.solana.com" &&
   window.location.protocol === "https:";
-const uatConnection = useUatProxy ? new UatConnection(endpoint) : null;
-const ConnectionBoundary = useUatProxy
+const proxyConnection = useDevnetProxy ? new UatConnection(endpoint) : null;
+const ConnectionBoundary = useDevnetProxy
   ? ({ children }) => (
-      <ConnectionContext.Provider value={{ connection: uatConnection }}>
+      <ConnectionContext.Provider value={{ connection: proxyConnection }}>
         {children}
       </ConnectionContext.Provider>
     )

@@ -12,8 +12,43 @@ import {
 } from "./pdas.js";
 import { getNextDrawTime } from "./time.js";
 import { MIN_NUMBER, MAX_NUMBER, PICK_COUNT } from "./rules.js";
+import { loadAccessRules, loadChainRules } from "./chainRules.js";
+import { sendSettlementBatches } from "./settlements.js";
+import { ReferralClient } from "./ReferralClient.js";
 
 export const UAT_ADMIN = "2txjN4S6WEiDDT8R3QvGFgwZrchQ8k5kBXRhbYFX1eSz";
+
+function resultMetadata(padding) {
+  const unknown = {
+    drawType: null,
+    payoutLamports: null,
+    ticketCostLamports: null,
+  };
+  if (
+    padding?.length !== 32 ||
+    padding[0] !== 1 ||
+    ![0, 1].includes(padding[1]) ||
+    Array.from(padding)
+      .slice(18)
+      .some((byte) => byte !== 0)
+  )
+    return unknown;
+  const payout = new BN(Array.from(padding).slice(2, 10), "le");
+  const cost = new BN(Array.from(padding).slice(10, 18), "le");
+  const maximum = new BN(String(Number.MAX_SAFE_INTEGER));
+  if (
+    payout.lte(new BN(0)) ||
+    cost.lte(new BN(0)) ||
+    payout.gt(maximum) ||
+    cost.gt(maximum)
+  )
+    return unknown;
+  return {
+    drawType: padding[1] === 1 ? "daily" : "quick",
+    payoutLamports: payout.toNumber(),
+    ticketCostLamports: cost.toNumber(),
+  };
+}
 
 function validateNumbers(numbers, minimum = MIN_NUMBER) {
   if (
@@ -63,6 +98,9 @@ export class DodosClient {
     now = Date.now,
     nonceFactory = createNonce,
     storage = purchaseStorage(),
+    rulesLoader = loadChainRules,
+    accessRulesLoader = loadAccessRules,
+    referralRulesLoader,
   } = {}) {
     if (!program && !connection)
       throw new TypeError("A Solana connection is required.");
@@ -70,7 +108,11 @@ export class DodosClient {
     this.now = now;
     this.nonceFactory = nonceFactory;
     this.storage = storage;
+    this.connection = connection ?? program?.provider?.connection;
+    this.rulesLoader = rulesLoader;
+    this.accessRulesLoader = accessRulesLoader;
     this.pendingPurchase = null;
+    this.purchaseInFlight = false;
     const canSign =
       wallet?.publicKey && wallet.signTransaction && wallet.signAllTransactions;
     this.program =
@@ -84,6 +126,14 @@ export class DodosClient {
             })
           : { connection },
       );
+    this.referrals = new ReferralClient({
+      program: this.program,
+      wallet,
+      connection: this.connection,
+      payer: new PublicKey(UAT_ADMIN),
+      now,
+      rulesLoader: referralRulesLoader,
+    });
     this.purchaseKey = wallet?.publicKey
       ? `hiperia:purchase:${this.program.programId.toBase58()}:${wallet.publicKey.toBase58()}:${connection?.rpcEndpoint ?? "local"}`
       : null;
@@ -117,7 +167,11 @@ export class DodosClient {
       try {
         this.storage.removeItem(this.purchaseKey);
       } catch {
-        return;
+        try {
+          this.storage.setItem(this.purchaseKey, "");
+        } catch {
+          return;
+        }
       }
     }
   }
@@ -151,13 +205,52 @@ export class DodosClient {
       this.configAddress,
     );
     if (!config) return null;
-    const uatEnabled = Boolean(config.padding?.some((byte) => byte !== 0));
+    const configured = Boolean(config.padding?.some((byte) => byte !== 0));
+    const [rules, accessRules] = configured
+      ? await Promise.all([this.getRules(), this.getAccessRules()])
+      : [null, null];
+    if (
+      rules &&
+      (!config.ticketCostLamports?.eq(rules.quickTicketCostLamports) ||
+        !config.payoutLamports?.eq(rules.quickPayoutLamports))
+    )
+      throw new Error(
+        "The on-chain UAT prices do not match the configured contract. Purchases are paused until the configuration is verified.",
+      );
     return {
       ...config,
-      uatEnabled,
-      uatTester: uatEnabled ? new PublicKey(config.padding).toBase58() : null,
+      ...(rules ?? {}),
+      rulesRevision: rules?.revision ?? null,
+      permissionlessSettlement: [4, 5].includes(rules?.revision),
+      accessRulesRevision: accessRules?.revision ?? null,
+      publicPlayEnabled: accessRules?.publicPlayEnabled === true,
+      publicResultsEnabled: accessRules?.publicResultsEnabled === true,
+      uatEnabled: Boolean(configured && rules),
+      uatTester: configured ? new PublicKey(config.padding).toBase58() : null,
       uatAdmin: UAT_ADMIN,
     };
+  }
+
+  async getRules({ fresh = false } = {}) {
+    return this.rulesLoader({
+      connection: this.connection,
+      program: this.program,
+      configAddress: this.configAddress,
+      payer: new PublicKey(UAT_ADMIN),
+      now: this.now,
+      fresh,
+    });
+  }
+
+  async getAccessRules({ fresh = false } = {}) {
+    return this.accessRulesLoader({
+      connection: this.connection,
+      program: this.program,
+      configAddress: this.configAddress,
+      payer: new PublicKey(UAT_ADMIN),
+      now: this.now,
+      fresh,
+    });
   }
 
   async getTicket(nonce) {
@@ -195,6 +288,7 @@ export class DodosClient {
             id: addresses[index].toBase58(),
             numbers: Array.from(result.numbers),
             isPublished: true,
+            ...resultMetadata(result.padding),
           });
       });
     }
@@ -202,6 +296,7 @@ export class DodosClient {
       .map(({ publicKey, account }) => ({
         id: account.nonce.toString(),
         address: publicKey.toBase58(),
+        user: account.user.toBase58(),
         numbers: Array.from(account.numbers),
         drawTime: Number(account.drawTime.toString()),
         settled: account.settled,
@@ -230,6 +325,7 @@ export class DodosClient {
         id: publicKey.toBase58(),
         drawTime: Number(account.drawTime.toString()),
         numbers: Array.from(account.numbers),
+        ...resultMetadata(account.padding),
       }))
       .sort((first, second) => second.drawTime - first.drawTime);
   }
@@ -282,6 +378,19 @@ export class DodosClient {
   }
 
   async buyTicket(numbers, options = {}) {
+    if (this.purchaseInFlight)
+      throw new Error(
+        "A purchase is already waiting for your wallet or confirmation. Wait before buying another ticket.",
+      );
+    this.purchaseInFlight = true;
+    try {
+      return await this.submitPurchase(numbers, options);
+    } finally {
+      this.purchaseInFlight = false;
+    }
+  }
+
+  async submitPurchase(numbers, options) {
     this.requireSigner();
     const recovered = await this.recoverPendingPurchase();
     if (recovered) return recovered;
@@ -300,6 +409,12 @@ export class DodosClient {
     )
       throw new RangeError("Choose a future draw within 24 hours.");
     const user = this.wallet.publicKey;
+    const config = options.config ?? (await this.getConfig());
+    const referral =
+      options.useReferrals !== false &&
+      (await this.referrals.purchaseRules(config))
+        ? await this.referrals.preparePurchase()
+        : null;
     this.rememberPurchase({
       id: String(nonce),
       numbers: selection,
@@ -307,16 +422,30 @@ export class DodosClient {
     });
     let signature;
     try {
-      signature = await this.program.methods
-        .buyTicket(new BN(String(nonce)), new BN(String(drawTime)), selection)
-        .accountsStrict({
-          config: this.configAddress,
-          vault: this.vaultAddress,
-          ticket: getTicketPda(user, nonce, this.program.programId)[0],
-          user,
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
+      const method = referral ? "buyTicketReferred" : "buyTicket";
+      const builder = this.program.methods[method](
+        new BN(String(nonce)),
+        new BN(String(drawTime)),
+        selection,
+      ).accountsStrict({
+        config: this.configAddress,
+        vault: this.vaultAddress,
+        ticket: getTicketPda(user, nonce, this.program.programId)[0],
+        user,
+        systemProgram: SystemProgram.programId,
+        ...(referral
+          ? {
+              profile: referral.profile,
+              referrerProfile: referral.referrerProfile,
+            }
+          : {}),
+      });
+      signature = referral
+        ? await this.referrals.send([
+            ...referral.instructions,
+            await builder.instruction(),
+          ])
+        : await builder.rpc({ maxRetries: 0 });
     } catch (failure) {
       let receipt = null;
       try {
@@ -373,7 +502,18 @@ export class DodosClient {
 
   async settleTicket(ticket) {
     this.requireSigner();
-    const user = this.wallet.publicKey;
+    const user = ticket.user
+      ? new PublicKey(ticket.user)
+      : this.wallet.publicKey;
+    const qualifications = await this.settlementQualifications([
+      { ...ticket, user: user.toBase58() },
+    ]);
+    const qualifier = qualifications.values().next().value;
+    if (qualifier)
+      return this.referrals.send([
+        await this.settleInstruction({ ...ticket, user: user.toBase58() }),
+        qualifier,
+      ]);
     return this.program.methods
       .settleTicket()
       .accountsStrict({
@@ -385,5 +525,138 @@ export class DodosClient {
         systemProgram: SystemProgram.programId,
       })
       .rpc();
+  }
+
+  async settleInstruction(ticket) {
+    const user = new PublicKey(ticket.user);
+    return this.program.methods
+      .settleTicket()
+      .accountsStrict({
+        config: this.configAddress,
+        vault: this.vaultAddress,
+        ticket: getTicketPda(user, ticket.id, this.program.programId)[0],
+        result: getResultPda(ticket.drawTime, this.program.programId)[0],
+        user,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+  }
+
+  async settleBatch(tickets, { assertActive } = {}) {
+    this.requireSigner();
+    const qualifications = await this.settlementQualifications(tickets);
+    return sendSettlementBatches({
+      tickets,
+      assertActive,
+      batchSize: qualifications.size ? 3 : undefined,
+      pendingTickets: async (batch) => {
+        const accounts = await this.program.account.ticket.fetchMultiple(
+          batch.map((ticket) => new PublicKey(ticket.address)),
+        );
+        return batch.filter((ticket, index) => {
+          const account = accounts[index];
+          return (
+            account &&
+            !account.settled &&
+            account.user.toBase58() === ticket.user &&
+            account.nonce.toString() === ticket.id &&
+            Number(account.drawTime.toString()) === ticket.drawTime
+          );
+        });
+      },
+      instructionFor: async (ticket) => {
+        const settlement = await this.settleInstruction(ticket);
+        const qualifier = qualifications.get(ticket.address);
+        return qualifier ? [settlement, qualifier] : [settlement];
+      },
+      send: (transaction) =>
+        this.program.provider.sendAndConfirm(transaction, [], {
+          commitment: "confirmed",
+          preflightCommitment: "confirmed",
+          maxRetries: 0,
+        }),
+    });
+  }
+
+  async settlementQualifications(tickets) {
+    const instructions = new Map();
+    if (
+      !this.program.account.referralProfile ||
+      !this.program.methods.qualifyReferral
+    )
+      return instructions;
+    for (const owner of new Set(tickets.map((ticket) => ticket.user))) {
+      if (!owner) continue;
+      try {
+        const profile = await this.referrals.getProfile(new PublicKey(owner));
+        if (!profile?.firstTicket || profile.qualified || !profile.referrer)
+          continue;
+        const ticket = tickets.find(
+          (entry) =>
+            entry.user === owner &&
+            (entry.address ??
+              getTicketPda(
+                owner,
+                entry.id,
+                this.program.programId,
+              )[0].toBase58()) === profile.firstTicket,
+        );
+        if (!ticket) continue;
+        const qualifier = await this.referrals.settlementQualification(
+          ticket,
+          profile,
+        );
+        if (qualifier) instructions.set(profile.firstTicket, qualifier);
+      } catch {
+        continue;
+      }
+    }
+    return instructions;
+  }
+
+  async claimAll(options = {}) {
+    this.requireSigner();
+    const tickets = await this.getTickets();
+    const due = Math.floor(this.now() / 1000);
+    const wins = tickets.filter(
+      (ticket) =>
+        !ticket.settled &&
+        ticket.drawTime <= due &&
+        ticket.result?.isPublished &&
+        ticket.numbers.every(
+          (number, index) => number === ticket.result.numbers[index],
+        ),
+    );
+    return this.settleBatch(wins, options);
+  }
+
+  async recordDraw(drawTime, options = {}) {
+    this.requireSigner();
+    const signature = await this.publishResult(drawTime);
+    const config = await this.getConfig();
+    if (!config?.permissionlessSettlement) return { signature, settled: 0 };
+    const result = await this.getResult(drawTime);
+    if (!result?.isPublished)
+      throw new Error(
+        "The draw record is not confirmed. Refresh before trying again.",
+      );
+    const entries = await this.program.account.ticket.all();
+    const losses = entries
+      .filter(
+        ({ account }) =>
+          !account.settled &&
+          account.drawTime.toString() === String(drawTime) &&
+          !Array.from(account.numbers).every(
+            (number, index) => number === result.numbers[index],
+          ),
+      )
+      .map(({ publicKey, account }) => ({
+        address: publicKey.toBase58(),
+        user: account.user.toBase58(),
+        id: account.nonce.toString(),
+        drawTime: Number(account.drawTime.toString()),
+      }));
+    const processed = await this.settleBatch(losses, options);
+    return { signature, ...processed };
   }
 }

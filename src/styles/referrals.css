@@ -1,0 +1,110 @@
+.referral-panel {
+  min-width: 0;
+  padding: 24px;
+  margin-top: 22px;
+}
+.referral-intro,
+.referral-note,
+.referral-status {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.75;
+}
+.referral-intro {
+  margin-top: 12px;
+}
+.referral-note {
+  margin-top: 10px;
+}
+.referral-status {
+  margin-top: 18px;
+}
+.referral-code-block,
+.referral-attribution,
+.referral-benefits,
+.referral-qualification {
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+  margin-top: 18px;
+}
+.referral-panel code {
+  display: block;
+  font-size: 11px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.referral-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.referral-panel .button {
+  min-height: 36px;
+  font-size: 10px;
+  padding: 9px 12px;
+}
+.referral-counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+.referral-counts dt {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.referral-counts dd {
+  color: var(--mint);
+  font-size: 23px;
+  margin: 7px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+.referral-form {
+  margin-top: 18px;
+}
+.referral-form input {
+  width: 100%;
+  min-width: 0;
+  font-size: 12px;
+}
+.referral-form > button {
+  margin-top: 10px;
+}
+.referral-form input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.referral-error {
+  color: var(--danger);
+  margin-top: 10px;
+  font-size: 11px;
+}
+.referral-benefits > p:not(.referral-note) {
+  color: var(--mint);
+  font-size: 12px;
+  line-height: 1.9;
+}
+.referral-benefits > p > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.referral-benefits > button,
+.referral-qualification > button {
+  margin-top: 12px;
+}
+.referral-panel > .history-link {
+  margin-top: 14px;
+}
+@media (max-width: 620px) {
+  .referral-panel {
+    padding: 20px;
+  }
+  .referral-form input {
+    font-size: 16px;
+  }
+  .referral-counts {
+    gap: 8px;
+  }
+}

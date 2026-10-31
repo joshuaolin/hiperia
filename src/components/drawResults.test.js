@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DrawHistory,
+  drawSessionLabel,
   formatCombination,
   getDrawSession,
 } from "./drawResults.js";
@@ -44,7 +45,8 @@ test("draw history rejects reversed dates, impossible dates and invalid query fi
     { to: "2025-02-29" },
     { from: "2026-13-01" },
     { from: "10/28/2026" },
-    { session: "17" },
+    { session: "24" },
+    { session: "legacy16" },
     { page: 0 },
     { pageSize: 0 },
     { pageSize: 51 },
@@ -56,25 +58,99 @@ test("draw history rejects reversed dates, impossible dates and invalid query fi
   assert.equal(history.query().total, 0);
 });
 
-test("draw sessions require exact 2 PM or 4 PM Manila timestamps", () => {
+test("recorded daily metadata determines session filters without guessing legacy types", () => {
   const history = new DrawHistory([
-    record("two", "2026-10-28T06:00:00Z"),
+    { ...record("two", "2026-10-28T06:00:00Z"), drawType: "daily" },
     record("four", "2026-10-28T08:00:00Z"),
     record("test", "2026-10-28T06:00:01Z"),
     record("near", "2026-10-28T07:59:59Z"),
   ]);
-  assert.equal(getDrawSession(timestamp("2026-10-28T06:00:00Z")), "14");
+  assert.equal(getDrawSession(timestamp("2026-10-28T06:00:00Z")), null);
   assert.deepEqual(
     history.query({ session: "14" }).records.map(({ id }) => id),
     ["two"],
   );
   assert.deepEqual(
-    history.query({ session: "16" }).records.map(({ id }) => id),
-    ["four"],
+    history.query({ session: "unknown" }).records.map(({ id }) => id),
+    ["four", "near", "test"],
   );
   assert.deepEqual(
-    history.query({ session: "test" }).records.map(({ id }) => id),
-    ["near", "test"],
+    history.query({ session: "quick" }).records.map(({ id }) => id),
+    [],
+  );
+  for (const hour of [2, 6, 10, 14, 18, 22]) {
+    const drawTime = timestamp("2026-10-27T16:00:00Z") + hour * 3600;
+    assert.equal(getDrawSession({ drawTime, drawType: "daily" }), String(hour));
+    assert.equal(getDrawSession({ drawTime }), "unknown");
+    assert.equal(getDrawSession({ drawTime: drawTime + 1 }), "unknown");
+    assert.equal(
+      new DrawHistory([
+        { id: String(hour), drawTime, drawType: "daily" },
+      ]).query({
+        session: String(hour),
+      }).total,
+      1,
+    );
+  }
+  assert.equal(
+    drawSessionLabel(timestamp("2026-10-28T08:00:00Z")),
+    "Type not recorded",
+  );
+  assert.equal(
+    drawSessionLabel(timestamp("2026-10-27T18:00:00Z")),
+    "Type not recorded",
+  );
+  assert.equal(getDrawSession(null), null);
+});
+
+test("quick and daily labels require metadata and preserve unknown historical fields", () => {
+  const legacy = record("legacy-four", "2026-10-28T08:00:00Z");
+  const quickAtFour = {
+    ...legacy,
+    id: "quick-four",
+    drawType: "quick",
+    numbers: [2, 22],
+  };
+  const quickAtTwo = {
+    ...record("quick-two", "2026-10-29T06:00:00Z"),
+    drawType: "quick",
+  };
+  const daily = {
+    ...record("daily", "2026-10-29T06:00:00Z"),
+    drawType: "daily",
+  };
+  const history = new DrawHistory([legacy, quickAtFour, quickAtTwo, daily]);
+  assert.equal(drawSessionLabel(quickAtFour), "Quick draw");
+  assert.equal(drawSessionLabel(legacy), "Type not recorded");
+  assert.equal(drawSessionLabel(daily), "2 PM daily draw");
+  assert.deepEqual(
+    history.query({ session: "quick" }).records.map(({ id }) => id),
+    ["quick-two", "quick-four"],
+  );
+  assert.deepEqual(
+    history.query({ session: "unknown" }).records.map(({ id }) => id),
+    ["legacy-four"],
+  );
+  assert.deepEqual(
+    history.query({ session: "14" }).records.map(({ id }) => id),
+    ["daily"],
+  );
+});
+
+test("empty history has no placeholder results and older fixed UAT combinations remain unchanged", () => {
+  assert.deepEqual(new DrawHistory().query().records, []);
+  const history = new DrawHistory([
+    record("previous", "2026-10-28T06:00:00Z", [6, 9]),
+    record("current", "2026-10-29T06:00:00Z", [2, 22]),
+    record("legacy", "2026-10-27T06:00:00Z", [1, 22]),
+  ]);
+  assert.deepEqual(
+    history.query().records.map(({ numbers }) => numbers),
+    [
+      [2, 22],
+      [6, 9],
+      [1, 22],
+    ],
   );
 });
 

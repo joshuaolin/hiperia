@@ -1,6 +1,7 @@
 import { Buffer } from "buffer";
 import { PublicKey } from "@solana/web3.js";
 import { PROGRAM_ID } from "./idl.js";
+import { VRF_PROGRAM_ID, ORAO_PROGRAM_ID } from "./vrfProtocol.js";
 
 function toInteger(value) {
   if (typeof value === "number" && !Number.isSafeInteger(value))
@@ -48,3 +49,39 @@ export const getResultPda = (drawTime, programId = PROGRAM_ID) =>
     [Buffer.from("result"), i64LeBytes(drawTime)],
     new PublicKey(programId),
   );
+export const getReferralPda = (owner, programId = PROGRAM_ID) =>
+  PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("referral"),
+      Buffer.from("v1"),
+      new PublicKey(owner).toBuffer(),
+    ],
+    new PublicKey(programId),
+  );
+
+export const getDrawPda = (drawTime, programId = VRF_PROGRAM_ID) =>
+  PublicKey.findProgramAddressSync(
+    [Buffer.from("draw"), i64LeBytes(drawTime)],
+    new PublicKey(programId),
+  );
+
+export const getOracleClientPda = (drawTime, programId = VRF_PROGRAM_ID) =>
+  PublicKey.findProgramAddressSync(
+    [Buffer.from("oracle-client"), i64LeBytes(drawTime)],
+    new PublicKey(programId),
+  );
+
+export const getOracleNetworkPda = (programId = ORAO_PROGRAM_ID) =>
+  PublicKey.findProgramAddressSync(
+    [Buffer.from("orao-vrf-network-configuration")],
+    new PublicKey(programId),
+  );
+
+export function getOracleRequestPda(seed, programId = ORAO_PROGRAM_ID) {
+  if (!seed || seed.length !== 32)
+    throw new TypeError("Oracle request seeds must contain exactly 32 bytes.");
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("orao-vrf-randomness-request"), Buffer.from(seed)],
+    new PublicKey(programId),
+  );
+}

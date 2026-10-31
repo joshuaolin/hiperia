@@ -1,7 +1,9 @@
 import DonationCard from "../../components/DonationCard";
-import TicketList from "../../components/TicketList";
+import { useEffect, useRef } from "react";
+import DodosTickets from "../../components/DodosTickets.jsx";
 import DrawResults from "../../components/DrawResults.jsx";
 import DodosGuide from "../../components/DodosGuide";
+import ReferralDashboard from "../../components/ReferralDashboard.jsx";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useDodosGame } from "./useDodosGame.js";
 import {
@@ -9,26 +11,8 @@ import {
   formatCountdown,
   getNextDrawTime,
 } from "../../lib/onchain/time.js";
-import { explorerAccountUrl } from "../../lib/explorer.js";
-import {
-  NUMBER_OPTIONS,
-  DAILY_PAYOUT_MULTIPLIER,
-} from "../../lib/onchain/rules.js";
+import { NUMBER_OPTIONS } from "../../lib/onchain/rules.js";
 import "./dodos.css";
-
-function RefreshIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path
-        d="M16 8a6.3 6.3 0 1 0-.5 5M16 3v5h-5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 function NumberPair({ numbers, placeholder = false }) {
   return (
@@ -46,47 +30,122 @@ function NumberPair({ numbers, placeholder = false }) {
   );
 }
 
-function HistoryLink({ address, network, children }) {
-  const href = explorerAccountUrl(address, network);
-  return href ? (
-    <a
-      className="history-link"
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      {children} <span aria-hidden="true">↗</span>
-    </a>
-  ) : null;
+function solFromLamports(value) {
+  if (value == null) return null;
+  const amount = Number(value.toString()) / 1e9;
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+}
+
+function hasPrizeBacking(capacity, entry, prize) {
+  if (capacity?.freeLamports == null || entry == null || prize == null)
+    return null;
+  try {
+    return (
+      BigInt(capacity.freeLamports.toString()) + BigInt(entry.toString()) >=
+      BigInt(prize.toString())
+    );
+  } catch {
+    return null;
+  }
 }
 
 export default function Dodos() {
   const game = useDodosGame();
   const { setVisible } = useWalletModal();
-  const cost = game.config
-    ? Number(game.config.ticketCostLamports.toString()) / 1e9
-    : null;
-  const quickPayout = game.config
-    ? Number(game.config.payoutLamports.toString()) / 1e9
-    : null;
-  const dailyPayout =
-    quickPayout === null ? null : quickPayout * DAILY_PAYOUT_MULTIPLIER;
+  const guideDisclosure = useRef(null);
+  const publicPlayEnabled = game.config?.publicPlayEnabled === true;
+  const verifiedRandomness =
+    game.config?.randomnessMode === "orao-vrf" &&
+    game.config?.randomnessVerified === true;
+  const awaitingRandomness =
+    game.config?.rulesRevision === 6 && !verifiedRandomness;
+  const publicBuild =
+    import.meta.env.VITE_APP_ENV === "uat" &&
+    import.meta.env.VITE_GAME_VERSION === "vrf";
+  const referralsVisible =
+    !publicBuild &&
+    game.publicGame !== true &&
+    !publicPlayEnabled &&
+    !verifiedRandomness;
+
+  useEffect(() => {
+    const openLinkedGuide = () => {
+      if (
+        ["#game-guide", "#dodos-guide"].includes(window.location.hash) &&
+        guideDisclosure.current
+      ) {
+        guideDisclosure.current.open = true;
+        guideDisclosure.current.scrollIntoView({ block: "start" });
+      }
+    };
+    openLinkedGuide();
+    window.addEventListener("hashchange", openLinkedGuide);
+    return () => window.removeEventListener("hashchange", openLinkedGuide);
+  }, []);
+  const standardQuickCost = solFromLamports(
+    game.config?.quickTicketCostLamports,
+  );
+  const standardDailyCost = solFromLamports(
+    game.config?.dailyTicketCostLamports,
+  );
+  const referralDiscount =
+    referralsVisible && game.referral?.discountEligible === true;
+  const quickCost = referralDiscount
+    ? solFromLamports(game.referral?.rules?.referredQuickTicketCostLamports)
+    : standardQuickCost;
+  const dailyCost = referralDiscount
+    ? solFromLamports(game.referral?.rules?.referredDailyTicketCostLamports)
+    : standardDailyCost;
+  const quickPayout = solFromLamports(game.config?.quickPayoutLamports);
+  const dailyPayout = solFromLamports(game.config?.dailyPayoutLamports);
+  const cost = game.quickDraw ? quickCost : dailyCost;
   const payout = game.quickDraw ? quickPayout : dailyPayout;
+  const capacity = game.config?.capacity;
+  const selectedEntryLamports = referralDiscount
+    ? game.quickDraw
+      ? game.referral?.rules?.referredQuickTicketCostLamports
+      : game.referral?.rules?.referredDailyTicketCostLamports
+    : game.quickDraw
+      ? game.config?.quickTicketCostLamports
+      : game.config?.dailyTicketCostLamports;
+  const prizeBacked = hasPrizeBacking(
+    capacity,
+    selectedEntryLamports,
+    game.quickDraw
+      ? game.config?.quickPayoutLamports
+      : game.config?.dailyPayoutLamports,
+  );
+  const reserveFull = prizeBacked === false;
   const currentSeconds = Math.floor(game.now / 1000);
   const nextDaily = getNextDrawTime(game.now);
+  const scheduleIntervalHours = game.config?.scheduleIntervalSeconds
+    ? game.config.scheduleIntervalSeconds / 3600
+    : null;
+  const scheduleInterval = scheduleIntervalHours
+    ? `every ${scheduleIntervalHours} hours`
+    : "Awaiting schedule";
+  const dailySchedule = Array.isArray(game.config?.dailyHours)
+    ? game.config.dailyHours
+        .map((hour) => `${hour % 12 || 12} ${hour < 12 ? "AM" : "PM"}`)
+        .join(" / ")
+    : null;
   const available =
     game.uatReady &&
     game.authorized &&
     !game.isLoading &&
     game.canSign &&
-    game.networkAllowed;
+    game.networkAllowed &&
+    !reserveFull &&
+    (game.config?.rulesRevision !== 6 || verifiedRandomness) &&
+    cost !== null &&
+    payout !== null;
 
   return (
     <div className="dodos-dashboard" id="dodos">
       <div className="page-heading">
         <div>
           <p className="eyebrow">PICK. MATCH. CLAIM.</p>
-          <h1>
+          <h1 id="dodos-heading" tabIndex={-1}>
             Dodos<span>.</span>
           </h1>
           <p className="page-description">
@@ -98,41 +157,55 @@ export default function Dodos() {
 
       <nav className="dodos-page-links" aria-label="Dodos sections">
         <a href="#buy-ticket">Buy a ticket</a>
+        <a href="#your-tickets">Your tickets</a>
         <a href="#draw-results">Draw results</a>
-        <a href="#dodos-guide">How to play</a>
+        {referralsVisible && <a href="#referrals">Referrals</a>}
+        <a
+          href="#game-guide"
+          onClick={() => {
+            if (guideDisclosure.current) guideDisclosure.current.open = true;
+          }}
+        >
+          How to play
+        </a>
       </nav>
 
       <div className="draw-stats" aria-label="Draw details">
         <div className="draw-stat">
-          <span>Ticket price</span>
+          <span>Daily draw prize</span>
           <strong>
-            {cost === null ? "—" : cost}
+            {dailyPayout === null ? "—" : dailyPayout}
             <small>SOL</small>
           </strong>
-          <span>+ network fees & account rent</span>
+          <span>
+            {dailyCost === null
+              ? "Awaiting contract"
+              : `${dailyCost} SOL entry`}{" "}
+            · {scheduleInterval}
+          </span>
         </div>
         <div className="draw-stat">
-          <span>
-            {game.quickDraw ? "Quick draw prize" : "Daily draw prize"}
-          </span>
+          <span>Quick draw prize</span>
           <strong>
-            {payout === null ? "—" : payout}
+            {quickPayout === null ? "—" : quickPayout}
             <small>SOL</small>
           </strong>
           <span>
-            {game.quickDraw
-              ? "Faster test draw · exact order"
-              : "Double the quick draw prize · exact order"}
+            {quickCost === null
+              ? "Awaiting contract"
+              : `${quickCost} SOL entry`}{" "}
+            · about 60 seconds
           </span>
         </div>
         <div className="draw-stat">
           <span>Next daily draw · UTC+8</span>
           <strong className="draw-stat-time">
-            {formatDrawTime(nextDaily)}
+            {dailySchedule ? formatDrawTime(nextDaily) : "Awaiting contract"}
           </strong>
           <span>
-            In {formatCountdown(nextDaily - currentSeconds)} · 2 PM and 4 PM
-            daily
+            {dailySchedule
+              ? `In ${formatCountdown(nextDaily - currentSeconds)} · ${scheduleInterval}`
+              : "Loading on-chain schedule"}
           </span>
         </div>
       </div>
@@ -141,13 +214,17 @@ export default function Dodos() {
         className="status-note status-note-warning dashboard-notice"
         role="note"
       >
-        {game.uatReady
-          ? "UAT test mode: the live program records 06 → 09. The frontend target is 06 → 07, pending an on-chain upgrade. Results are fixed, not random. Only approved test wallets can play; all amounts are test SOL. Older records keep their original results."
-          : game.isLoading
-            ? "Loading the on-chain UAT configuration. Purchases are paused until test mode is verified."
-            : game.loadFailed
-              ? "UAT mode could not be verified. Purchases are paused until the on-chain configuration loads."
-              : "The fixed-result UAT update is awaiting on-chain configuration. Purchases are paused until the contract confirms test mode."}
+        {awaitingRandomness
+          ? "The on-chain randomness configuration could not be verified. Purchases are paused; existing tickets and blockchain history remain available."
+          : game.uatReady && verifiedRandomness
+            ? "Public Devnet · Verifiable randomness. ORAO supplies each new draw's randomness, recorded with its oracle request. All amounts are test SOL. Legacy tickets and their original results stay separate."
+            : game.uatReady
+              ? `UAT test mode: draw results are fixed, not random. ${publicPlayEnabled ? "All signing wallets can play on Devnet" : "Only approved test wallets can play"}; all amounts are test SOL. Published results and older records remain visible in blockchain history.`
+              : game.isLoading
+                ? "Loading the on-chain UAT configuration. Purchases are paused until test mode is verified."
+                : game.loadFailed
+                  ? "UAT mode could not be verified. Purchases are paused until the on-chain configuration loads."
+                  : "The on-chain game setup is awaiting verification. Purchases are paused until the contract and randomness configuration are verified."}
       </div>
       {game.uatReady && game.connected && !game.authorized && (
         <div
@@ -262,20 +339,30 @@ export default function Dodos() {
                   {formatDrawTime(drawTime)}
                   {drawTime <= currentSeconds
                     ? " · Started — choose another"
-                    : " · Daily draw"}
+                    : ` · Daily · ${dailyCost ?? "—"} SOL entry`}
                 </option>
               ))}
               {game.uatReady && (
                 <option value="quick">
-                  UAT quick draw · about 60 seconds · {quickPayout ?? "—"} SOL
+                  Quick draw · about 60 seconds · {quickCost ?? "—"} SOL entry
                 </option>
               )}
             </select>
             <p className="draw-rules">
               {game.quickDraw
-                ? "A faster UAT test with the quick prize shown above. The timer starts when you press Buy; approve within about one minute. Daily draws offer double the prize with the same matching rules."
-                : "This ticket is valid only for the date and time selected. The 2 PM and 4 PM draws need separate tickets. You can enter until the selected draw starts."}
+                ? `The quick draw starts about 60 seconds after you press Buy; approve before it starts. An exact match pays ${quickPayout ?? "—"} SOL. Daily draws have their own entry price and prize.`
+                : `This ticket covers only the selected date and time. ${dailySchedule ? `Daily draws: ${dailySchedule}, UTC+8.` : "Awaiting the on-chain daily schedule."} Multiple tickets for the same draw are allowed while enough prize reserves are available. Buy before the selected draw starts.`}
             </p>
+            {capacity && (
+              <p
+                className={reserveFull ? "draw-expired" : "draw-rules"}
+                role="status"
+              >
+                {reserveFull
+                  ? "Prize reserves are full for this entry. Multiple tickets per draw are allowed; this pause protects every accepted prize. Refresh after reserves are released or funded."
+                  : `Unreserved prize funds: ${solFromLamports(capacity.freeLamports) ?? "Unavailable"} SOL. Each accepted ticket keeps its full prize backing.`}
+              </p>
+            )}
             {game.drawExpired && (
               <p className="draw-expired" role="status">
                 This draw has started. Choose an upcoming draw; your selection
@@ -283,12 +370,32 @@ export default function Dodos() {
               </p>
             )}
             <div className="ticket-total">
-              <span>Ticket total</span>
+              <span>
+                Ticket total{referralDiscount ? " · referral price" : ""}
+              </span>
               <strong>
                 {cost === null ? "Awaiting contract" : `${cost} SOL`}
                 <small> + fees & rent</small>
               </strong>
             </div>
+            {referralsVisible &&
+              game.referral?.available &&
+              !game.referral.profile?.bindingLocked && (
+                <p className="draw-rules referral-purchase-note">
+                  {game.referral.profile?.referrer ? (
+                    "This first campaign ticket will permanently lock your selected inviter."
+                  ) : (
+                    <>
+                      No inviter selected. Your first campaign ticket
+                      permanently locks this choice.{" "}
+                      <a href="#referrals">Add a referral code before buying</a>{" "}
+                      if you want referral entry prices.
+                    </>
+                  )}
+                  {!game.referral.profile &&
+                    " This purchase also creates your referral profile once; account rent applies. Sharing stays off unless you enable it."}
+                </p>
+              )}
             <button
               className="button button-primary purchase-button"
               onClick={game.connected ? game.purchase : () => setVisible(true)}
@@ -312,20 +419,28 @@ export default function Dodos() {
                         ? "A signing wallet is required"
                         : !game.uatReady
                           ? "UAT setup pending"
-                          : !game.authorized
-                            ? "Approved UAT wallet required"
-                            : game.drawExpired
-                              ? "Choose an upcoming draw"
-                              : game.pendingPurchase
-                                ? "Check / retry purchase"
-                                : "Buy ticket"}
+                          : awaitingRandomness
+                            ? "Randomness verification required"
+                            : !game.authorized
+                              ? "Approved UAT wallet required"
+                              : reserveFull
+                                ? "Prize reserves full"
+                                : game.drawExpired
+                                  ? "Choose an upcoming draw"
+                                  : cost === null || payout === null
+                                    ? "Awaiting draw pricing"
+                                    : game.pendingPurchase
+                                      ? "Check / retry purchase"
+                                      : "Buy ticket"}
               <span aria-hidden="true">↗</span>
             </button>
             <p className="purchase-caption">
               {game.pendingPurchase
                 ? "Retries reuse the same ticket ID so only one purchase can succeed. Use Refresh to check its status without sending."
                 : !game.networkAllowed && !game.networkChecking
-                  ? "Connect to Devnet, Testnet, or a local validator to use Dodos."
+                  ? game.publicGame
+                    ? "Connect to Solana Devnet to use Dodos."
+                    : "Connect to Devnet, Testnet, or a local validator to use Dodos."
                   : game.isLoading
                     ? "Loading contract details…"
                     : !game.config
@@ -333,222 +448,64 @@ export default function Dodos() {
                       : "Approve before the draw starts. A late transaction is rejected; no ticket price is collected. Failed transactions can still incur a network fee."}
             </p>
           </section>
-
-          <section
-            className="panel tickets-panel"
-            aria-labelledby="tickets-title"
-          >
-            <div className="panel-heading">
-              <div className="tickets-title">
-                <h2 id="tickets-title">Your tickets</h2>
-                {game.connected && game.config && !game.loadFailed && (
-                  <span className="count-badge">{game.tickets.length}</span>
-                )}
-              </div>
-              <button
-                className="button button-ghost"
-                disabled={
-                  game.pending || game.isLoading || game.refreshCooldown > 0
-                }
-                onClick={game.refresh}
-                aria-label="Refresh tickets and results"
-              >
-                <RefreshIcon />
-                {game.refreshCooldown > 0
-                  ? `Refresh in ${game.refreshCooldown}s`
-                  : "Refresh"}
-              </button>
-            </div>
-            {game.isLoading ? (
-              <div className="empty-state" role="status">
-                Loading on-chain tickets…
-              </div>
-            ) : !game.connected ? (
-              <div className="empty-state">
-                <svg viewBox="0 0 28 28" fill="none" aria-hidden="true">
-                  <rect
-                    x="4"
-                    y="6"
-                    width="20"
-                    height="16"
-                    rx="3"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                  />
-                  <path
-                    d="M18 12h6v5h-6a2.5 2.5 0 0 1 0-5Z"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                  />
-                </svg>
-                <strong>Your tickets live here</strong>Connect a wallet to view
-                your on-chain tickets.
-              </div>
-            ) : game.tickets.length === 0 ? (
-              <div className="empty-state">
-                <strong>
-                  {game.loadFailed ? "Tickets unavailable" : "No tickets yet"}
-                </strong>
-                {game.loadFailed
-                  ? "Refresh after the connection is available."
-                  : "Choose your numbers above to enter a draw."}
-              </div>
-            ) : (
-              <TicketList
-                newestFirst
-                tickets={game.tickets}
-                renderTicket={(ticket) => {
-                  const due = currentSeconds >= ticket.drawTime;
-                  const published = Boolean(ticket.result?.isPublished);
-                  const won =
-                    published &&
-                    ticket.numbers.every(
-                      (number, index) =>
-                        number === ticket.result.numbers[index],
-                    );
-                  const status = ticket.settled
-                    ? won
-                      ? "Prize claimed"
-                      : "Closed"
-                    : !due
-                      ? "Upcoming"
-                      : !published
-                        ? "Awaiting result"
-                        : won
-                          ? "Prize ready"
-                          : "No match";
-                  return (
-                    <article className="ticket-card">
-                      <div className="ticket-card-top">
-                        <NumberPair numbers={ticket.numbers} />
-                        <span
-                          className={`ticket-status ${won && !ticket.settled ? "ticket-status-ready" : ""}`}
-                        >
-                          {status}
-                        </span>
-                      </div>
-                      <p className="ticket-draw-time">
-                        {formatDrawTime(ticket.drawTime)} · UTC+8
-                      </p>
-                      {ticket.payoutLamports !== null &&
-                        ticket.payoutLamports !== undefined && (
-                          <p className="ticket-prize">
-                            This ticket's match prize:{" "}
-                            {ticket.payoutLamports / 1e9} SOL
-                          </p>
-                        )}
-                      <p className="ticket-countdown">
-                        {ticket.settled
-                          ? won
-                            ? "Prize transfer recorded on-chain"
-                            : "Closed without a prize"
-                          : !due
-                            ? `Starts in ${formatCountdown(ticket.drawTime - currentSeconds)}`
-                            : !published
-                              ? "Draw is due. Record the result to check this ticket."
-                              : won
-                                ? "Both numbers match in order. UAT prizes have no claim deadline."
-                                : "No prize. You can close this ticket to release reserved prize capacity."}
-                      </p>
-                      {published && (
-                        <div className="ticket-result">
-                          <span>Recorded result</span>
-                          <NumberPair numbers={ticket.result.numbers} />
-                        </div>
-                      )}
-                      <div className="ticket-history">
-                        <HistoryLink
-                          address={ticket.address}
-                          network={game.network}
-                        >
-                          Ticket history
-                        </HistoryLink>
-                        {published && (
-                          <HistoryLink
-                            address={ticket.result.id}
-                            network={game.network}
-                          >
-                            Draw history
-                          </HistoryLink>
-                        )}
-                      </div>
-                      <div className="ticket-actions">
-                        <button
-                          className="button button-secondary"
-                          disabled={game.pending}
-                          onClick={() => game.check(ticket)}
-                        >
-                          View result · free
-                        </button>
-                        {!published && (
-                          <button
-                            className="button button-secondary"
-                            disabled={
-                              game.pending ||
-                              !game.canSign ||
-                              !game.networkAllowed ||
-                              !game.authorized ||
-                              !due ||
-                              ticket.settled
-                            }
-                            onClick={() => game.publish(ticket)}
-                          >
-                            Record draw result
-                          </button>
-                        )}
-                        {published && !ticket.settled && (
-                          <button
-                            className="button button-primary"
-                            disabled={
-                              game.pending ||
-                              !game.canSign ||
-                              !game.networkAllowed ||
-                              !game.authorized ||
-                              !due ||
-                              ticket.settled
-                            }
-                            onClick={() => game.settle(ticket)}
-                          >
-                            {won ? "Claim prize" : "Close ticket"}
-                          </button>
-                        )}
-                      </div>
-                      {!ticket.settled && (
-                        <p className="ticket-action-note">
-                          {!published
-                            ? "Record draw result saves the contract's result; you cannot choose the numbers. This wallet pays the network fee and result account rent once per draw."
-                            : won
-                              ? "Claim prize transfers the payout to your wallet. A network fee applies."
-                              : "Closing is optional. A network fee applies; no prize is paid."}
-                        </p>
-                      )}
-                    </article>
-                  );
-                }}
-              />
-            )}
-          </section>
         </div>
 
         <div className="dashboard-secondary">
-          <DodosGuide
-            priceSol={cost}
-            quickPayoutSol={quickPayout}
-            dailyPayoutSol={dailyPayout}
-            uatReady={game.uatReady}
-          />
-          <DonationCard />
+          <DodosTickets game={game} />
         </div>
       </div>
       <DrawResults
         results={game.results}
         network={game.network}
-        quickPayout={quickPayout}
-        dailyPayout={dailyPayout}
         isLoading={game.isLoading}
         loadFailed={game.loadFailed}
         refreshWarning={game.refreshWarning}
+        loaded={
+          game.historyLoaded === true ||
+          (game.historyLoaded === undefined &&
+            Boolean(game.config) &&
+            !game.loadFailed)
+        }
+        programIds={game.programIds}
       />
+      {referralsVisible && <ReferralDashboard game={game} />}
+      <details
+        ref={guideDisclosure}
+        id="game-guide"
+        className="panel guide-disclosure"
+      >
+        <summary>
+          <span>
+            <strong>How to play Dodos</strong>
+            <span>Rules, prizes and claiming your wins</span>
+          </span>
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="m5 8 5 5 5-5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </summary>
+        <DodosGuide
+          quickPriceSol={quickCost}
+          dailyPriceSol={dailyCost}
+          quickPayoutSol={quickPayout}
+          dailyPayoutSol={dailyPayout}
+          uatReady={game.uatReady && !awaitingRandomness}
+          publicPlayEnabled={publicPlayEnabled}
+          randomnessVerified={verifiedRandomness}
+          publicGame={game.publicGame}
+          rules={game.config}
+          referralRules={referralsVisible ? game.referral?.rules : null}
+          referralDiscount={referralDiscount}
+        />
+      </details>
+      <div className="support-section">
+        <DonationCard network={game.network} />
+      </div>
     </div>
   );
 }

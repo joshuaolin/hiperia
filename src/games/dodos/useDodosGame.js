@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { DodosClient } from "../../lib/onchain/DodosClient.js";
+import { createDodosClient } from "../../lib/onchain/PublicDodosClient.js";
 import {
   getNextDrawTime,
   getUpcomingDrawTimes,
   formatDrawTime,
   getSelectedDrawTime,
+  isDailyDrawTime,
 } from "../../lib/onchain/time.js";
 import useNetworkStatus from "../../components/useNetworkStatus.js";
 import { runDodosTransaction } from "./transaction.js";
+import { dodosErrorMessage } from "./errors.js";
 import {
   RefreshGate,
   RefreshCooldownError,
@@ -20,26 +22,35 @@ import {
   PICK_COUNT,
   createQuickPick,
 } from "../../lib/onchain/rules.js";
+import {
+  assertReviewedOracleQuote,
+  gameSources,
+  loadGameSnapshot,
+} from "./gameSnapshot.js";
 
 export function useDodosGame() {
   const { connection } = useConnection();
   const networkStatus = useNetworkStatus();
   const { publicKey, signTransaction, signAllTransactions } = useWallet();
-  const { client, refreshGate } = useMemo(
+  const { client, refreshGate, referralRefreshGate } = useMemo(
     () => ({
-      client: new DodosClient({
+      client: createDodosClient({
         connection,
         wallet: { publicKey, signTransaction, signAllTransactions },
       }),
       refreshGate: new RefreshGate(),
+      referralRefreshGate: new RefreshGate(),
     }),
     [connection, publicKey, signTransaction, signAllTransactions],
   );
   const [data, setData] = useState({
     source: null,
     config: null,
+    configVerified: false,
+    historyLoaded: false,
     tickets: [],
     results: [],
+    referral: null,
   });
   const [selectedNumbers, setSelectedNumbers] = useState([]);
   const [drawChoice, setDrawChoice] = useState(() => String(getNextDrawTime()));
@@ -51,6 +62,7 @@ export function useDodosGame() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [refreshFailure, setRefreshFailure] = useState(null);
   const [refreshUntil, setRefreshUntil] = useState(0);
+  const [oracleQuote, setOracleQuote] = useState(null);
   const loadedData = useRef(null);
   const refreshRetryTimer = useRef(null);
   const mounted = useRef(false);
@@ -59,10 +71,17 @@ export function useDodosGame() {
   const activeClient = useRef(client);
   const canSign = Boolean(publicKey && signTransaction && signAllTransactions);
   const config = data.source === client ? data.config : null;
-  const uatReady = Boolean(config?.uatEnabled);
+  const uatReady = Boolean(config?.uatEnabled && data.configVerified);
   const walletAddress = publicKey?.toBase58();
+  const programIds = gameSources(client).map((source) =>
+    source.client.program.programId.toBase58(),
+  );
+  const dataKey = `${connection.rpcEndpoint}:${walletAddress ?? "readonly"}:${programIds.join(":")}`;
   const authorized = Boolean(
-    uatReady && [config.uatTester, config.uatAdmin].includes(walletAddress),
+    uatReady &&
+      walletAddress &&
+      (config.publicPlayEnabled ||
+        [config.uatTester, config.uatAdmin].includes(walletAddress)),
   );
   const quickDraw = drawChoice === "quick";
   const drawExpired =
@@ -74,12 +93,24 @@ export function useDodosGame() {
   function requireUatWallet() {
     if (!uatReady)
       throw new Error(
-        "The UAT contract update is not configured yet. Wait for the on-chain setup before sending transactions.",
+        "Wait for the verified on-chain game rules before sending a new entry or randomness request.",
       );
     if (!authorized)
       throw new Error(
-        "This fixed-result UAT is restricted to the approved test wallet. Connect your approved wallet to continue.",
+        "This game is restricted to an approved test wallet. Connect an approved wallet to continue.",
       );
+  }
+
+  function assertActive() {
+    if (!mounted.current || activeClient.current !== client)
+      throw new Error(
+        "The connected wallet changed. Refresh before continuing.",
+      );
+  }
+
+  function requireTicketWallet() {
+    assertActive();
+    client.requireSigner();
   }
 
   const refresh = useCallback(
@@ -91,18 +122,29 @@ export function useDodosGame() {
       const requestId = ++refreshId.current;
       setIsLoading(true);
       try {
-        const { recovered, config, tickets, results } = await refreshGate.run(
-          async () => {
-            const recovered = await client.recoverPendingPurchase();
-            const config = await client.getConfig();
-            const [tickets, results] = config
-              ? await Promise.all([
-                  client.getTickets(config),
-                  client.getResults(),
-                ])
-              : [[], []];
-            return { recovered, config, tickets, results };
-          },
+        const snapshot = await refreshGate.run(
+          () =>
+            loadGameSnapshot(client, {
+              previous:
+                loadedData.current?.key === dataKey
+                  ? { ...loadedData.current, source: client }
+                  : null,
+              loadReferral: (activeConfig, previous) =>
+                referralRefreshGate
+                  .run(() => client.referrals.load(activeConfig), {
+                    freshAfterPending: critical,
+                  })
+                  .catch((failure) => ({
+                    ...previous,
+                    loaded: true,
+                    error:
+                      isRateLimitError(failure) ||
+                      (failure instanceof RefreshCooldownError &&
+                        failure.rateLimited)
+                        ? "Referral data is temporarily rate-limited. Your last loaded data is preserved; try Refresh shortly."
+                        : "Referral data is temporarily unavailable. Your last loaded data is preserved; try Refresh again.",
+                  })),
+            }),
           { manual, freshAfterPending: critical },
         );
         if (
@@ -110,20 +152,23 @@ export function useDodosGame() {
           activeClient.current === client &&
           requestId === refreshId.current
         ) {
-          const nextData = { source: client, config, tickets, results };
+          const nextData = {
+            ...snapshot,
+            key: dataKey,
+          };
           loadedData.current = nextData;
           setData(nextData);
           setLoadFailed(false);
           setRefreshFailure(null);
           clearTimeout(refreshRetryTimer.current);
-          if (recovered) {
+          if (snapshot.recovered) {
             setMessage(
               "Your earlier purchase was recovered from the chain. No second purchase was sent.",
             );
             setSelectedNumbers([]);
           }
           setError(
-            config
+            snapshot.config
               ? client.getPendingPurchase()
                 ? "The earlier purchase is not confirmed yet. Refresh or retry; the same ticket ID will be reused."
                 : ""
@@ -136,9 +181,22 @@ export function useDodosGame() {
           activeClient.current === client &&
           requestId === refreshId.current
         ) {
+          if (failure.snapshot) {
+            const partialData = { ...failure.snapshot, key: dataKey };
+            loadedData.current = partialData;
+            setData(partialData);
+            if (partialData.recovered) {
+              setMessage(
+                "Your earlier purchase was recovered from the chain. No second purchase was sent.",
+              );
+              setSelectedNumbers([]);
+            }
+          }
           const hasData =
-            loadedData.current?.source === client &&
-            Boolean(loadedData.current.config);
+            loadedData.current?.key === dataKey &&
+            Boolean(
+              loadedData.current.config || loadedData.current.historyLoaded,
+            );
           const rateLimited =
             isRateLimitError(failure) ||
             (failure instanceof RefreshCooldownError && failure.rateLimited);
@@ -148,8 +206,11 @@ export function useDodosGame() {
               setData({
                 source: client,
                 config: null,
+                configVerified: false,
+                historyLoaded: false,
                 tickets: [],
                 results: [],
+                referral: null,
               });
             setError("");
             setRefreshFailure({ rateLimited, hasData });
@@ -176,7 +237,7 @@ export function useDodosGame() {
         }
       }
     },
-    [client, refreshGate],
+    [client, dataKey, refreshGate, referralRefreshGate],
   );
 
   useEffect(() => {
@@ -186,9 +247,29 @@ export function useDodosGame() {
     setError("");
     setRefreshFailure(null);
     setRefreshUntil(0);
+    setOracleQuote(null);
+    if (loadedData.current?.key === dataKey)
+      setData({ ...loadedData.current, source: client });
     const pendingPurchase = client.getPendingPurchase();
-    if (pendingPurchase) setSelectedNumbers(pendingPurchase.numbers);
+    if (pendingPurchase) {
+      setSelectedNumbers(pendingPurchase.numbers);
+      setDrawChoice(
+        isDailyDrawTime(pendingPurchase.drawTime)
+          ? String(pendingPurchase.drawTime)
+          : "quick",
+      );
+    }
     refresh();
+    const resume = () => {
+      if (document.visibilityState !== "visible") return;
+      setNow(Date.now());
+      if (!busy.current) refresh();
+    };
+    const restorePage = (event) => {
+      if (event.persisted) resume();
+    };
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("pageshow", restorePage);
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => {
       mounted.current = false;
@@ -196,10 +277,16 @@ export function useDodosGame() {
       refreshId.current += 1;
       clearInterval(timer);
       clearTimeout(refreshRetryTimer.current);
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("pageshow", restorePage);
     };
-  }, [client, refresh]);
+  }, [client, dataKey, refresh]);
 
-  async function runAction(action, requiresSignature = false) {
+  async function runAction(
+    action,
+    requiresSignature = false,
+    { refreshAfter = true } = {},
+  ) {
     if (busy.current) return;
     busy.current = true;
     setPending(true);
@@ -217,12 +304,15 @@ export function useDodosGame() {
         : await action();
       if (mounted.current && activeClient.current === client) {
         setMessage(text);
-        await refresh({ critical: requiresSignature });
+        if (refreshAfter) await refresh({ critical: requiresSignature });
       }
     } catch (failure) {
       if (mounted.current && activeClient.current === client) {
-        setError(failure.message || "The transaction failed.");
-        if (client.getPendingPurchase()) await refresh();
+        const actionError = dodosErrorMessage(failure);
+        if (requiresSignature || client.getPendingPurchase())
+          await refresh({ critical: requiresSignature });
+        if (mounted.current && activeClient.current === client)
+          setError(actionError);
       }
     } finally {
       busy.current = false;
@@ -252,6 +342,21 @@ export function useDodosGame() {
     setSelectedNumbers(createQuickPick());
   }
 
+  function runReferral(action, message) {
+    return runAction(async () => {
+      if (
+        data.source !== client ||
+        !data.referral?.available ||
+        data.referral.error
+      )
+        throw new Error(
+          "Wait for the on-chain referral campaign to load before continuing.",
+        );
+      await action();
+      return message;
+    }, true);
+  }
+
   const refreshCooldown = Math.max(0, Math.ceil((refreshUntil - now) / 1000));
   const refreshError = refreshFailure
     ? `${refreshFailure.rateLimited ? "Temporarily rate-limited." : "Dodos is temporarily unavailable."} ${refreshFailure.hasData ? "Showing last loaded data." : "Dodos has not loaded yet."} ${refreshCooldown ? `Try again in ${refreshCooldown}s.` : "You can try Refresh again."}`
@@ -260,8 +365,28 @@ export function useDodosGame() {
   return {
     ...(data.source === client
       ? data
-      : { config: null, tickets: [], results: [] }),
+      : {
+          config: null,
+          configVerified: false,
+          historyLoaded: false,
+          tickets: [],
+          results: [],
+        }),
+    referral:
+      data.source === client && data.referral
+        ? data.referral
+        : {
+            available: false,
+            loaded: false,
+            profile: null,
+            rules: null,
+            discountEligible: false,
+            error: null,
+          },
     connected: Boolean(publicKey),
+    publicGame: Boolean(client.primary && client.legacy),
+    programIds,
+    oracleQuote: oracleQuote?.source === client ? oracleQuote : null,
     canSign,
     uatReady,
     authorized,
@@ -295,45 +420,152 @@ export function useDodosGame() {
       runAction(async () => {
         requireUatWallet();
         const drawTime = getSelectedDrawTime(drawChoice);
-        const ticket = await client.buyTicket(selectedNumbers, { drawTime });
+        const ticket = await client.buyTicket(selectedNumbers, {
+          drawTime,
+          config,
+          useReferrals: !config.publicPlayEnabled,
+          assertActive,
+        });
         if (mounted.current) setSelectedNumbers([]);
         return ticket.recovered
           ? "Your earlier purchase was recovered from the chain. No second purchase was sent."
           : `Ticket confirmed for ${formatDrawTime(ticket.drawTime)} UTC+8. It covers only this draw. View its blockchain history below.`;
       }, true),
+    reviewReveal: (ticket) =>
+      runAction(
+        async () => {
+          requireUatWallet();
+          if (!client.primary || client.clientFor(ticket) !== client.primary)
+            throw new Error(
+              "This ticket retains its original draw rules and does not use an oracle reveal.",
+            );
+          const quote = await client.getOracleQuote(ticket.drawTime);
+          assertActive();
+          const reviewed = {
+            ...quote,
+            drawTime: ticket.drawTime,
+            sourceProgram: ticket.sourceProgram,
+            source: client,
+          };
+          assertReviewedOracleQuote(reviewed, quote, ticket);
+          setOracleQuote(reviewed);
+          return "Reveal costs loaded from Devnet. Review the fee and rent before choosing Reveal result.";
+        },
+        false,
+        { refreshAfter: false },
+      ),
     publish: (ticket) =>
       runAction(async () => {
-        requireUatWallet();
-        const signature = await client.publishResult(ticket.drawTime);
-        return signature
-          ? "Draw result recorded on-chain. View result to check your match."
-          : "This draw result is already recorded on-chain. View result to check your match.";
+        requireTicketWallet();
+        const oracleDraw = Boolean(
+          client.primary && client.clientFor(ticket) === client.primary,
+        );
+        if (oracleDraw && ticket.draw?.status === "open") requireUatWallet();
+        const result = await client.recordDraw(ticket.drawTime, {
+          ticket,
+          assertActive,
+          onProgress: (progress) => {
+            assertActive();
+            if (progress.phase === "request") {
+              try {
+                assertReviewedOracleQuote(
+                  oracleQuote?.source === client ? oracleQuote : null,
+                  progress.quote,
+                  ticket,
+                );
+              } catch (failure) {
+                setOracleQuote(null);
+                throw failure;
+              }
+              setMessage(
+                "Approve the randomness request. Your wallet funds the reviewed oracle fee and account rent.",
+              );
+            } else if (progress.phase === "pending") {
+              setMessage(
+                "Randomness was requested on-chain. Waiting for the oracle; no additional request is being sent.",
+              );
+            } else if (progress.phase === "finalize") {
+              setMessage(
+                (progress.reclaimSkipped
+                  ? "Oracle randomness is ready. Approve draw completion to record the result. Request funding will remain available for separate reclamation to its original requester."
+                  : "Oracle randomness is ready. Approve draw completion to record the result. Any reclaimed request funding goes only to the original requester.") +
+                  (progress.plannedLosses
+                    ? ` This approval also processes up to ${progress.plannedLosses} losing ticket${progress.plannedLosses === 1 ? "" : "s"} to release reserved prizes.`
+                    : ""),
+              );
+            }
+          },
+        });
+        assertActive();
+        if (oracleDraw) {
+          setOracleQuote(null);
+          if (result.pending || result.phase === "pending")
+            return "The randomness request is recorded on-chain and is still awaiting oracle fulfillment. Refresh to check its status; no new request is needed.";
+          return `The verified oracle result is recorded on-chain. View its numbers and oracle proof in ticket history.${result.releasedLosses ? ` ${result.releasedLosses} losing ticket${result.releasedLosses === 1 ? "" : "s"} processed; their prize reserves are available again.` : ""}${result.cleanupSkipped ? " Remaining losing reserves can be processed by the operator." : ""}${result.refreshWarning ? " Refresh to verify the latest ticket states." : ""}${result.reclaimSkipped ? " Unused request funding remains available for separate reclamation to its original requester." : ""}`;
+        }
+        return `${result.signature ? "Draw result recorded on-chain." : "This draw result is already recorded on-chain."}${result.settled ? ` ${result.settled} losing ticket${result.settled === 1 ? "" : "s"} processed; their prize reserves are available again.` : ""} The recorded numbers appear on your tickets below.`;
       }, true),
-    check: (ticket) =>
-      runAction(async () => {
-        const result = await client.checkTicket(ticket);
-        if (result.status === "pending")
-          return Math.floor(Date.now() / 1000) < ticket.drawTime
-            ? "This draw has not started yet. View result is free and only reads the blockchain."
-            : "The draw is due, but its result has not been recorded. Record draw result to create the on-chain record; your wallet pays the network fee and account rent.";
-        if (ticket.settled)
-          return `${result.status === "won" ? "Prize already claimed" : "Ticket already closed without a prize"}. Recorded result: ${result.numbers.map((number) => String(number).padStart(2, "0")).join(" → ")}.`;
-        return result.status === "won"
-          ? "Both numbers match in order. Claim prize sends the configured payout to your wallet. UAT prizes have no claim deadline."
-          : `No match. Recorded result: ${result.numbers.map((number) => String(number).padStart(2, "0")).join(" → ")}. Close ticket is optional, pays a network fee, and releases its reserved prize capacity. No prize is paid.`;
-      }),
     settle: (ticket) =>
       runAction(async () => {
-        requireUatWallet();
+        requireTicketWallet();
         const result = await client.checkTicket(ticket);
         if (result.status === "pending")
-          throw new Error(
-            "Record this draw result before claiming a prize or closing the ticket.",
-          );
-        await client.settleTicket(ticket);
+          throw new Error("Record this draw result before claiming a prize.");
+        assertActive();
+        await client.settleTicket(ticket, { assertActive });
         return result.status === "won"
           ? "Prize paid to your wallet. View the ticket's blockchain history to verify the transfer."
           : "Ticket closed. No prize was paid; its reserved prize capacity is available again.";
       }, true),
+    refund: (ticket) =>
+      runAction(async () => {
+        requireTicketWallet();
+        if (typeof client.refundTicket !== "function")
+          throw new Error("This ticket retains its original settlement rules.");
+        await client.refundTicket(ticket, { assertActive });
+        return "This ticket's entry payment was refunded to its recorded wallet owner. Network fees and account rent are separate.";
+      }, true),
+    claimAll: () =>
+      runAction(async () => {
+        requireTicketWallet();
+        const result = await client.claimAll({
+          tickets: data.source === client ? data.tickets : [],
+          assertActive,
+        });
+        return result.settled
+          ? `${result.settled} prize${result.settled === 1 ? "" : "s"} claimed. Payouts were sent to your wallet; see ticket history to verify.`
+          : "No unclaimed winning tickets were found among your loaded on-chain entries. Refresh to check for newer results.";
+      }, true),
+    enableReferralSharing: () =>
+      runReferral(
+        () => client.referrals.setSharing(true),
+        "Referral sharing enabled on-chain. Your wallet address is your referral code.",
+      ),
+    disableReferralSharing: () =>
+      runReferral(
+        () => client.referrals.setSharing(false),
+        "Referral sharing disabled on-chain. Existing player attribution and earned counts remain recorded.",
+      ),
+    bindReferrer: (address) =>
+      runReferral(
+        () => client.referrals.bind(address),
+        "Referral code saved on-chain. Your discount applies to eligible new tickets; the referrer becomes permanent on your first paid campaign ticket.",
+      ),
+    removeReferralBenefits: () =>
+      runReferral(
+        () => client.referrals.removeBenefits(),
+        "Referral discount disabled on-chain. New tickets use the normal price. A locked first referrer remains in campaign history.",
+      ),
+    restoreReferralBenefits: () =>
+      runReferral(
+        () => client.referrals.update({ benefitsEnabled: true }),
+        "Referral discount restored on-chain for eligible new tickets.",
+      ),
+    qualifyReferral: () =>
+      runReferral(
+        () => client.referrals.qualify(),
+        "Your first settled campaign ticket is qualified on-chain. The referrer's qualified-player count is up to date.",
+      ),
+    refreshReferral: () => refresh({ manual: true }),
   };
 }

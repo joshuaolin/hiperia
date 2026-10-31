@@ -34,3 +34,7 @@ playwright-report/
 .vercel/
 .env*
 !.env.example
+**/*keypair*.json
+**/*secret-key*.json
+*.pem
+*.key

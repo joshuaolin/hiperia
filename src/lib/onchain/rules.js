@@ -3,6 +3,8 @@ export const MAX_NUMBER = 22;
 export const PICK_COUNT = 2;
 export const QUICK_PAYOUT_MULTIPLIER = 1;
 export const DAILY_PAYOUT_MULTIPLIER = 2;
+export const DAILY_DRAW_HOURS = Object.freeze([2, 6, 10, 14, 18, 22]);
+export const FIXED_UAT_NUMBERS = Object.freeze([2, 22]);
 export const NUMBER_OPTIONS = Object.freeze(
   Array.from(
     { length: MAX_NUMBER - MIN_NUMBER + 1 },

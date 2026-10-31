@@ -10,10 +10,21 @@
       "name": "configure_uat",
       "discriminator": [228, 239, 221, 220, 67, 173, 61, 216],
       "accounts": [
-        { "name": "config", "writable": true },
-        { "name": "admin", "signer": true }
+        {
+          "name": "config",
+          "writable": true
+        },
+        {
+          "name": "admin",
+          "signer": true
+        }
       ],
-      "args": [{ "name": "tester", "type": "pubkey" }]
+      "args": [
+        {
+          "name": "tester",
+          "type": "pubkey"
+        }
+      ]
     },
     {
       "name": "buy_ticket",
@@ -264,12 +275,208 @@
         },
         {
           "name": "user",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "get_rules",
+      "discriminator": [100, 26, 69, 246, 115, 199, 97, 78],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [99, 111, 110, 102, 105, 103]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [],
+      "returns": {
+        "defined": {
+          "name": "UatRules"
+        }
+      }
+    },
+    {
+      "name": "get_referral_rules",
+      "discriminator": [39, 85, 253, 247, 0, 26, 100, 205],
+      "accounts": [
+        {
+          "name": "config"
+        }
+      ],
+      "args": [],
+      "returns": {
+        "defined": {
+          "name": "ReferralRules"
+        }
+      }
+    },
+    {
+      "name": "register_referral",
+      "discriminator": [158, 196, 134, 102, 193, 102, 184, 86],
+      "accounts": [
+        {
+          "name": "profile",
+          "writable": true
+        },
+        {
+          "name": "owner",
           "writable": true,
           "signer": true
         },
         {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "sharing_enabled",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "update_referral",
+      "discriminator": [123, 215, 252, 27, 184, 244, 151, 197],
+      "accounts": [
+        {
+          "name": "profile",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "referrer_profile",
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "sharing_enabled",
+          "type": "bool"
+        },
+        {
+          "name": "referrer",
+          "type": "pubkey"
+        },
+        {
+          "name": "benefits_enabled",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "buy_ticket_referred",
+      "discriminator": [166, 69, 75, 67, 188, 33, 255, 138],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [99, 111, 110, 102, 105, 103]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [118, 97, 117, 108, 116]
+              }
+            ]
+          }
+        },
+        {
+          "name": "ticket",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [116, 105, 99, 107, 101, 116]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              },
+              {
+                "kind": "arg",
+                "path": "ticket_nonce"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "profile",
+          "writable": true
+        },
+        {
+          "name": "referrer_profile",
+          "writable": true,
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "ticket_nonce",
+          "type": "u64"
+        },
+        {
+          "name": "draw_time",
+          "type": "i64"
+        },
+        {
+          "name": "numbers",
+          "type": {
+            "array": ["u8", 2]
+          }
+        }
+      ]
+    },
+    {
+      "name": "qualify_referral",
+      "discriminator": [145, 213, 90, 237, 237, 71, 193, 34],
+      "accounts": [
+        {
+          "name": "profile",
+          "writable": true
+        },
+        {
+          "name": "ticket"
+        },
+        {
+          "name": "referrer_profile",
+          "writable": true,
+          "optional": true
         }
       ],
       "args": []
@@ -291,6 +498,10 @@
     {
       "name": "Vault",
       "discriminator": [211, 8, 232, 43, 2, 152, 117, 119]
+    },
+    {
+      "name": "ReferralProfile",
+      "discriminator": [13, 74, 189, 176, 219, 84, 162, 8]
     }
   ],
   "events": [
@@ -309,6 +520,18 @@
     {
       "name": "TicketSettled",
       "discriminator": [72, 40, 13, 3, 184, 159, 190, 211]
+    },
+    {
+      "name": "ReferralUpdated",
+      "discriminator": [44, 206, 190, 2, 81, 151, 155, 214]
+    },
+    {
+      "name": "ReferralJoined",
+      "discriminator": [220, 189, 246, 25, 20, 185, 102, 120]
+    },
+    {
+      "name": "ReferralQualified",
+      "discriminator": [190, 253, 127, 233, 49, 0, 16, 143]
     }
   ],
   "errors": [
@@ -411,6 +634,41 @@
       "code": 6019,
       "name": "InvalidTicketReserve",
       "msg": "The ticket liability reserve marker is invalid"
+    },
+    {
+      "code": 6020,
+      "name": "InvalidReferralProfile",
+      "msg": "The referral campaign profile is invalid"
+    },
+    {
+      "code": 6021,
+      "name": "SelfReferral",
+      "msg": "A wallet cannot refer itself"
+    },
+    {
+      "code": 6022,
+      "name": "ReferralBindingLocked",
+      "msg": "The referrer is permanent after the first paid campaign ticket"
+    },
+    {
+      "code": 6023,
+      "name": "InvalidReferrer",
+      "msg": "The referrer does not match its campaign profile"
+    },
+    {
+      "code": 6024,
+      "name": "ReferralSharingDisabled",
+      "msg": "The referrer is not accepting new bindings"
+    },
+    {
+      "code": 6025,
+      "name": "ReferralAlreadyQualified",
+      "msg": "This campaign player has already qualified"
+    },
+    {
+      "code": 6026,
+      "name": "ReferralNotEligible",
+      "msg": "The first campaign ticket must be paid and settled before qualification"
     }
   ],
   "types": [
@@ -628,6 +886,222 @@
             "type": {
               "array": ["u8", 32]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "UatRules",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "revision",
+            "type": "u8"
+          },
+          {
+            "name": "min_number",
+            "type": "u8"
+          },
+          {
+            "name": "max_number",
+            "type": "u8"
+          },
+          {
+            "name": "pick_count",
+            "type": "u8"
+          },
+          {
+            "name": "winning_numbers",
+            "type": {
+              "array": ["u8", 2]
+            }
+          },
+          {
+            "name": "quick_ticket_cost_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "daily_ticket_cost_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "quick_payout_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "daily_payout_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "daily_hours",
+            "type": {
+              "array": ["u8", 6]
+            }
+          },
+          {
+            "name": "schedule_interval_seconds",
+            "type": "u32"
+          },
+          {
+            "name": "schedule_offset_seconds",
+            "type": "u32"
+          },
+          {
+            "name": "buy_ahead_seconds",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ReferralProfile",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "referrer",
+            "type": "pubkey"
+          },
+          {
+            "name": "sharing_enabled",
+            "type": "bool"
+          },
+          {
+            "name": "benefits_enabled",
+            "type": "bool"
+          },
+          {
+            "name": "binding_locked",
+            "type": "bool"
+          },
+          {
+            "name": "qualified",
+            "type": "bool"
+          },
+          {
+            "name": "first_ticket",
+            "type": "pubkey"
+          },
+          {
+            "name": "registered_count",
+            "type": "u64"
+          },
+          {
+            "name": "qualified_count",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ReferralRules",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "revision",
+            "type": "u8"
+          },
+          {
+            "name": "campaign_version",
+            "type": "u8"
+          },
+          {
+            "name": "normal_quick_ticket_cost_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "normal_daily_ticket_cost_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "referred_quick_ticket_cost_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "referred_daily_ticket_cost_lamports",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ReferralUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "referrer",
+            "type": "pubkey"
+          },
+          {
+            "name": "sharing_enabled",
+            "type": "bool"
+          },
+          {
+            "name": "benefits_enabled",
+            "type": "bool"
+          },
+          {
+            "name": "binding_locked",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ReferralJoined",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "referrer",
+            "type": "pubkey"
+          },
+          {
+            "name": "ticket",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ReferralQualified",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "referrer",
+            "type": "pubkey"
+          },
+          {
+            "name": "ticket",
+            "type": "pubkey"
           }
         ]
       }

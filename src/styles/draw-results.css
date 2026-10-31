@@ -1,8 +1,12 @@
 .draw-results {
   min-width: 0;
   width: 100%;
-  padding: 24px;
+  padding: 0;
   margin-top: 24px;
+}
+.draw-results-content {
+  padding: 22px 24px 24px;
+  border-top: 1px solid var(--border);
 }
 .draw-results-heading {
   display: flex;
@@ -21,20 +25,22 @@
   font-size: 12px;
   line-height: 1.7;
 }
-.draw-results-prize {
-  display: grid;
-  flex-shrink: 0;
-  gap: 7px;
-  text-align: right;
-}
-.draw-results-prize > span {
+.draw-results-source {
+  margin-top: 8px;
   color: var(--muted);
   font-size: 11px;
+  line-height: 1.6;
 }
-.draw-results-prize strong {
-  color: var(--mint);
-  font-size: 15px;
-  font-weight: 650;
+.draw-results-source a {
+  color: var(--purple-light);
+  text-underline-offset: 3px;
+}
+.draw-results-account {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 10px;
 }
 .draw-results-filters {
   display: grid;
@@ -54,6 +60,25 @@
   width: 100%;
   height: 44px;
   font-size: 12px;
+}
+.draw-results-filters input[type="date"] {
+  max-width: 100%;
+  color-scheme: dark;
+  font-variant-numeric: tabular-nums;
+}
+.draw-results-filters input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+  min-height: 1.3em;
+}
+.draw-results-filters input[type="date"]::-webkit-calendar-picker-indicator {
+  padding: 4px;
+  cursor: pointer;
+}
+.draw-results-date-help {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
 }
 .draw-results-filters input[aria-invalid="true"],
 .draw-results-filters select[aria-invalid="true"] {
@@ -81,6 +106,9 @@
 .draw-results-status-warning {
   color: var(--warning);
 }
+.draw-results-scroll-hint {
+  display: none;
+}
 .draw-results-table-wrap {
   min-width: 0;
   max-width: 100%;
@@ -88,7 +116,7 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   scrollbar-width: thin;
-  scrollbar-color: #36544f transparent;
+  scrollbar-color: var(--accent-border) transparent;
 }
 .draw-results-table {
   width: 100%;
@@ -99,13 +127,13 @@
 .draw-results-table caption {
   padding: 14px 18px;
   color: var(--muted);
-  background: #0d1a20;
+  background: var(--input-bg);
   text-align: left;
   font-size: 11px;
   line-height: 1.6;
 }
 .draw-results-table thead {
-  background: #17292e;
+  background: var(--panel-raised);
 }
 .draw-results-table th,
 .draw-results-table td {
@@ -114,7 +142,7 @@
   vertical-align: middle;
 }
 .draw-results-table thead th {
-  color: #a9bdc2;
+  color: #c4bcd1;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.035em;
@@ -126,19 +154,17 @@
   font-weight: 450;
 }
 .draw-results-table tbody tr:hover {
-  background: #16292c;
+  background: #1f192b;
 }
-.draw-results-game,
-.draw-results-session,
+.draw-results-type,
 .draw-results-clock,
 .draw-results-table time > span {
   display: block;
 }
-.draw-results-game {
-  color: #eaf2f2;
+.draw-results-type {
+  color: var(--text);
   font-weight: 600;
 }
-.draw-results-session,
 .draw-results-clock {
   margin-top: 5px;
   color: var(--muted);
@@ -190,6 +216,9 @@
   font-size: 11px;
   line-height: 1.7;
 }
+.draw-results-proof {
+  margin-top: 9px;
+}
 @media (max-width: 1050px) {
   .draw-results-filters {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -200,23 +229,33 @@
 }
 @media (max-width: 620px) {
   .draw-results {
+    padding: 0;
+  }
+  .draw-results-content {
     padding: 20px 16px;
   }
   .draw-results-heading {
     flex-direction: column;
     gap: 18px;
   }
-  .draw-results-prize {
-    text-align: left;
+  .draw-results-scroll-hint {
+    display: block;
+    margin-bottom: 10px;
+    color: var(--muted);
+    font-size: 11px;
   }
   .draw-results-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px 12px;
   }
   .draw-results-filter-actions {
-    grid-column: auto;
+    grid-column: 1 / -1;
     flex-wrap: wrap;
     gap: 6px;
+  }
+  .draw-results-filters input,
+  .draw-results-filters select {
+    font-size: 16px;
   }
   .draw-results-filter-actions .button {
     flex: 1;
@@ -230,10 +269,5 @@
     width: 100%;
     justify-content: space-between;
     gap: 8px;
-  }
-}
-@media (max-width: 380px) {
-  .draw-results-filters {
-    grid-template-columns: minmax(0, 1fr);
   }
 }

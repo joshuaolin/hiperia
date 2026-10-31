@@ -1,36 +1,19 @@
 {
-  "license": "ISC",
+  "name": "hiperia-program",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
-    "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
+    "test": "node --test tests/hiperia.test.js",
+    "initialize": "node scripts/initialize.js",
+    "fund": "node scripts/fund.js",
+    "demo": "node scripts/demo.js"
   },
   "dependencies": {
-    "@coral-xyz/anchor": "^0.31.1",
-    "@solana/wallet-adapter-react": "^0.15.39",
-    "@solana/wallet-adapter-react-ui": "^0.9.39",
-    "@solana/web3.js": "^1.98.4",
-    "lodash": "^4.17.21",
-    "react-window": "^2.1.1"
+    "@coral-xyz/anchor": "0.31.1",
+    "@solana/web3.js": "^1.98.4"
   },
-  "devDependencies": {
-    "@types/chai": "^5.2.2",
-    "@types/mocha": "^10.0.10",
-    "@types/node": "^24.3.0",
-    "chai": "^6.0.1",
-    "mocha": "^11.7.1",
-    "prettier": "^2.6.2",
-    "ts-mocha": "^11.1.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.2"
-  },
-  "name": "hiperia_program",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "directories": {
-    "test": "tests"
-  },
-  "keywords": [],
-  "author": "",
-  "type": "commonjs"
+  "engines": {
+    "node": ">=22.12.0"
+  }
 }

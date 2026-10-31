@@ -4,9 +4,12 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const tests = readdirSync(resolve(root, "src"), { recursive: true })
-  .filter((name) => name.endsWith(".test.js"))
-  .map((name) => resolve(root, "src", name))
+const tests = ["src", "hiperia_program/scripts"]
+  .flatMap((directory) =>
+    readdirSync(resolve(root, directory), { recursive: true })
+      .filter((name) => name.endsWith(".test.js"))
+      .map((name) => resolve(root, directory, name)),
+  )
   .sort();
 const result = spawnSync(process.execPath, ["--test", ...tests], {
   cwd: root,
