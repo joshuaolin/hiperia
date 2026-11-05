@@ -264,3 +264,23 @@ export function loadRandomnessRules(options) {
     decode: decodeRandomnessRules,
   });
 }
+
+function decodeLiabilityRules(program, response) {
+  const decoded = decodeReturnData(program, response, 7, "liabilityRules");
+  const bytes = Buffer.from(response.value.returnData.data[0], "base64");
+  if (
+    program.programId.toBase58() !== VRF_PROGRAM_ID ||
+    decoded.revision !== 1 ||
+    decoded.dailyPooled !== true ||
+    decoded.quickPooled !== false ||
+    bytes[1] !== 1 || bytes[2] !== 0 ||
+    decoded.pairCount !== 420 ||
+    decoded.riskAccountSpace !== 3398
+  )
+    throw unsupported();
+  return Object.freeze(decoded);
+}
+
+export function loadLiabilityRules(options) {
+  return loadMetadata({ ...options, method: "getLiabilityRules", decode: decodeLiabilityRules });
+}

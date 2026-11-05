@@ -23,6 +23,9 @@ const CONFIG_SEED: &[u8] = b"config";
 const VAULT_SEED: &[u8] = b"vault";
 const TICKET_SEED: &[u8] = b"ticket";
 const DRAW_SEED: &[u8] = b"draw";
+const RISK_SEED: &[u8] = b"draw-risk";
+const RISK_VERSION_SEED: &[u8] = b"v1";
+const PAIR_COUNT: usize = 420;
 const CLIENT_SEED: &[u8] = b"oracle-client";
 const REQUEST_SEED: &[u8] = b"orao-vrf-randomness-request";
 const RANDOMNESS_DOMAIN: &[u8] = b"hiperia-dodos-vrf-v1";
@@ -84,6 +87,132 @@ pub mod hiperia_vrf {
         })
     }
 
+    pub fn get_liability_rules(_ctx: Context<GetRules>) -> Result<LiabilityRules> {
+        Ok(LiabilityRules {
+            revision: 1, daily_pooled: true, quick_pooled: false,
+            pair_count: PAIR_COUNT as u16, risk_account_space: DrawRisk::SPACE as u16,
+        })
+    }
+
+    pub fn buy_pooled_ticket(
+        ctx: Context<BuyPooledTicket>,
+        ticket_nonce: u64,
+        draw_time: i64,
+        numbers: [u8; 2],
+    ) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        require!(valid_numbers(&numbers), ErrorCode::InvalidNumbers);
+        require!(is_daily(draw_time), ErrorCode::InvalidDrawRisk);
+        require!(draw_time > now && draw_time <= now.saturating_add(BUY_AHEAD_SECONDS), ErrorCode::BadDrawTime);
+        let cost = draw_cost(draw_time, ctx.accounts.config.ticket_cost_lamports);
+        let prize = draw_prize(draw_time, ctx.accounts.config.payout_lamports)?;
+        let draw_info = ctx.accounts.draw.to_account_info();
+        let mut draw = load_or_create_draw(
+            &draw_info, &ctx.accounts.user.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(), draw_time, ctx.bumps.draw, cost, prize,
+        )?;
+        require_eq!(draw.status, 0, ErrorCode::DrawNotOpen);
+        require_eq!(draw.ticket_cost_lamports, cost, ErrorCode::InvalidTicketCost);
+        require_eq!(draw.payout_lamports, prize, ErrorCode::InvalidPayout);
+        let risk_info = ctx.accounts.draw_risk.to_account_info();
+        let mut risk = load_or_create_risk(
+            &risk_info, &ctx.accounts.user.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(), &draw, ctx.bumps.draw_risk,
+        )?;
+        validate_draw_risk(&risk, &draw)?;
+        require_eq!(risk.phase, 0, ErrorCode::InvalidDrawRisk);
+        let previous = risk.reserved_lamports;
+        add_pooled_ticket(&mut risk, &draw, numbers)?;
+        let vault_info = ctx.accounts.vault.to_account_info();
+        let after = replace_reserved_liability(
+            &ctx.accounts.vault, previous, risk.reserved_lamports, cost, 0,
+        )?;
+        draw.ticket_count = draw.ticket_count.checked_add(1).ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?;
+        transfer(CpiContext::new(ctx.accounts.system_program.to_account_info(), Transfer {
+            from: ctx.accounts.user.to_account_info(), to: vault_info,
+        }), cost)?;
+        ctx.accounts.vault.padding[..8].copy_from_slice(&after.to_le_bytes());
+        let ticket = &mut ctx.accounts.ticket;
+        ticket.user = ctx.accounts.user.key();
+        ticket.nonce = ticket_nonce;
+        ticket.draw_time = draw_time;
+        ticket.paid_lamports = cost;
+        ticket.settled = false;
+        ticket.bump = ctx.bumps.ticket;
+        ticket.numbers = numbers;
+        ticket.padding = pooled_prize_snapshot(prize)?;
+        save_draw(&draw_info, &draw)?;
+        risk.try_serialize(&mut &mut risk_info.try_borrow_mut_data()?[..])?;
+        emit!(TicketPurchased { user: ticket.user, nonce: ticket_nonce, draw_time, numbers, paid_lamports: cost });
+        Ok(())
+    }
+
+    pub fn reconcile_draw_risk(ctx: Context<ReconcileDrawRisk>, draw_time: i64) -> Result<()> {
+        require_eq!(ctx.accounts.draw.draw_time, draw_time, ErrorCode::MismatchedDraw);
+        reconcile_risk(&mut ctx.accounts.vault, &ctx.accounts.draw, &mut ctx.accounts.draw_risk)
+    }
+
+    pub fn settle_pooled_ticket(ctx: Context<SettlePooledTicket>) -> Result<()> {
+        let ticket = &ctx.accounts.ticket;
+        validate_ticket_owner(ticket, ctx.accounts.user.key())?;
+        require!(Clock::get()?.unix_timestamp >= ticket.draw_time, ErrorCode::TooEarly);
+        validate_pooled_ticket(ticket, &ctx.accounts.draw)?;
+        reconcile_risk(&mut ctx.accounts.vault, &ctx.accounts.draw, &mut ctx.accounts.draw_risk)?;
+        let is_winner = ticket.numbers == ctx.accounts.draw.numbers;
+        let payout = if is_winner { pooled_ticket_prize(&ticket.padding)? } else { 0 };
+        settle_pooled_liability(
+            &mut ctx.accounts.vault, &mut ctx.accounts.draw_risk,
+            &ctx.accounts.draw, ticket.numbers, &ctx.accounts.user.to_account_info(), payout,
+        )?;
+        let ticket = &mut ctx.accounts.ticket;
+        ticket.settled = true;
+        emit!(TicketSettled { user: ticket.user, nonce: ticket.nonce, draw_time: ticket.draw_time, numbers: ticket.numbers, is_winner });
+        Ok(())
+    }
+
+    pub fn release_pooled_losing_ticket(ctx: Context<ReleasePooledLosingTicket>) -> Result<()> {
+        let ticket = &ctx.accounts.ticket;
+        validate_ticket_owner(ticket, ticket.user)?;
+        require!(Clock::get()?.unix_timestamp >= ticket.draw_time, ErrorCode::TooEarly);
+        validate_pooled_ticket(ticket, &ctx.accounts.draw)?;
+        require!(ticket.numbers != ctx.accounts.draw.numbers, ErrorCode::WinningTicketCannotRelease);
+        reconcile_risk(&mut ctx.accounts.vault, &ctx.accounts.draw, &mut ctx.accounts.draw_risk)?;
+        let previous = ctx.accounts.draw_risk.reserved_lamports;
+        remove_pooled_ticket(&mut ctx.accounts.draw_risk, &ctx.accounts.draw, ticket.numbers)?;
+        require_eq!(previous, ctx.accounts.draw_risk.reserved_lamports, ErrorCode::InvalidDrawRisk);
+        let ticket = &mut ctx.accounts.ticket;
+        ticket.settled = true;
+        emit!(TicketSettled { user: ticket.user, nonce: ticket.nonce, draw_time: ticket.draw_time, numbers: ticket.numbers, is_winner: false });
+        Ok(())
+    }
+
+    pub fn refund_pooled_ticket(ctx: Context<RefundPooledTicket>) -> Result<()> {
+        let ticket = &ctx.accounts.ticket;
+        let draw = &ctx.accounts.draw;
+        validate_ticket_owner(ticket, ctx.accounts.user.key())?;
+        validate_pooled_ticket(ticket, draw)?;
+        require!(refund_due(ticket.draw_time, Clock::get()?.unix_timestamp), ErrorCode::RefundNotAvailable);
+        match draw.status {
+            0 => require_keys_eq!(ctx.accounts.oracle_request.key(), System::id(), ErrorCode::InvalidOracleRequest),
+            1 => {
+                require_keys_eq!(ctx.accounts.oracle_request.key(), draw.oracle_request, ErrorCode::InvalidOracleRequest);
+                validate_oracle_request(&ctx.accounts.oracle_request.to_account_info(), &draw.oracle_client, &draw.seed, Some(false))?;
+            }
+            _ => return err!(ErrorCode::RefundNotAvailable),
+        }
+        validate_draw_risk(&ctx.accounts.draw_risk, draw)?;
+        require_eq!(ctx.accounts.draw_risk.phase, 0, ErrorCode::InvalidDrawRisk);
+        settle_pooled_liability(
+            &mut ctx.accounts.vault, &mut ctx.accounts.draw_risk, draw,
+            ticket.numbers, &ctx.accounts.user.to_account_info(), ticket.paid_lamports,
+        )?;
+        let ticket = &mut ctx.accounts.ticket;
+        ticket.settled = true;
+        ticket.padding[9] = 1;
+        emit!(TicketRefunded { user: ticket.user, nonce: ticket.nonce, draw_time: ticket.draw_time, paid_lamports: ticket.paid_lamports });
+        Ok(())
+    }
+
     pub fn buy_ticket(
         ctx: Context<BuyTicket>,
         ticket_nonce: u64,
@@ -91,6 +220,7 @@ pub mod hiperia_vrf {
         numbers: [u8; 2],
     ) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
+        require!(!is_daily(draw_time), ErrorCode::InvalidDrawRisk);
         require!(valid_numbers(&numbers), ErrorCode::InvalidNumbers);
         require!(draw_time > now && draw_time <= now.saturating_add(BUY_AHEAD_SECONDS), ErrorCode::BadDrawTime);
         let cost = draw_cost(draw_time, ctx.accounts.config.ticket_cost_lamports);
@@ -384,6 +514,159 @@ fn save_draw(info: &AccountInfo, draw: &Draw) -> Result<()> {
     draw.try_serialize(&mut &mut info.try_borrow_mut_data()?[..])
 }
 
+fn load_or_create_risk<'info>(
+    info: &AccountInfo<'info>, payer: &AccountInfo<'info>, system_program: &AccountInfo<'info>,
+    draw: &Draw, bump: u8,
+) -> Result<Box<DrawRisk>> {
+    if info.owner == &crate::ID {
+        require_eq!(info.data_len(), DrawRisk::SPACE, ErrorCode::InvalidDrawRisk);
+        let risk = Box::new(DrawRisk::try_deserialize(&mut &info.try_borrow_data()?[..])?);
+        require_eq!(risk.bump, bump, ErrorCode::InvalidDrawRisk);
+        validate_draw_risk(&risk, draw)?;
+        return Ok(risk);
+    }
+    require!(info.owner == &System::id() && info.data_is_empty(), ErrorCode::InvalidDrawRisk);
+    let top_up = Rent::get()?.minimum_balance(DrawRisk::SPACE).saturating_sub(info.lamports());
+    if top_up > 0 {
+        invoke_signed(&system_instruction::transfer(payer.key, info.key, top_up), &[payer.clone(), info.clone(), system_program.clone()], &[])?;
+    }
+    let time = draw.draw_time.to_le_bytes();
+    let bump_bytes = [bump];
+    let seeds: &[&[u8]] = &[RISK_SEED, RISK_VERSION_SEED, &time, &bump_bytes];
+    invoke_signed(&system_instruction::allocate(info.key, DrawRisk::SPACE as u64), &[info.clone(), system_program.clone()], &[seeds])?;
+    invoke_signed(&system_instruction::assign(info.key, &crate::ID), &[info.clone(), system_program.clone()], &[seeds])?;
+    Ok(Box::new(DrawRisk {
+        draw_time: draw.draw_time, bump, phase: 0, total_count: 0, reserved_lamports: 0, counts: vec![0; PAIR_COUNT],
+    }))
+}
+
+fn pair_index(numbers: [u8; 2]) -> Result<usize> {
+    require!(valid_numbers(&numbers), ErrorCode::InvalidNumbers);
+    let first = (numbers[0] - MIN_NUMBER) as usize;
+    let second = (numbers[1] - MIN_NUMBER) as usize;
+    Ok(first * 20 + second - usize::from(second > first))
+}
+
+fn risk_liability(risk: &DrawRisk, draw: &Draw) -> Result<u64> {
+    require_eq!(risk.counts.len(), PAIR_COUNT, ErrorCode::InvalidDrawRisk);
+    require!(draw.is_daily && is_daily(draw.draw_time), ErrorCode::InvalidDrawRisk);
+    require!(draw.ticket_cost_lamports > 0 && draw.payout_lamports >= draw.ticket_cost_lamports, ErrorCode::InvalidDrawRisk);
+    let total = risk.counts.iter().try_fold(0u64, |sum, count| sum.checked_add(*count))
+        .ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?;
+    require_eq!(total, risk.total_count, ErrorCode::InvalidDrawRisk);
+    match risk.phase {
+        0 => {
+            let refunds = total.checked_mul(draw.ticket_cost_lamports).ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?;
+            let net_prize = draw.payout_lamports.checked_sub(draw.ticket_cost_lamports).ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?;
+            let maximum = risk.counts.iter().copied().max().unwrap_or(0);
+            refunds.checked_add(maximum.checked_mul(net_prize).ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?)
+                .ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))
+        }
+        1 => {
+            require_eq!(draw.status, 2, ErrorCode::ResultNotPublished);
+            risk.counts[pair_index(draw.numbers)?].checked_mul(draw.payout_lamports)
+                .ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))
+        }
+        _ => err!(ErrorCode::InvalidDrawRisk),
+    }
+}
+
+fn validate_draw_risk(risk: &DrawRisk, draw: &Draw) -> Result<()> {
+    require_eq!(risk.draw_time, draw.draw_time, ErrorCode::MismatchedDraw);
+    require_eq!(risk.reserved_lamports, risk_liability(risk, draw)?, ErrorCode::InvalidDrawRisk);
+    Ok(())
+}
+
+fn add_pooled_ticket(risk: &mut DrawRisk, draw: &Draw, numbers: [u8; 2]) -> Result<()> {
+    validate_draw_risk(risk, draw)?;
+    require_eq!(risk.phase, 0, ErrorCode::InvalidDrawRisk);
+    require_eq!(draw.status, 0, ErrorCode::DrawNotOpen);
+    let index = pair_index(numbers)?;
+    risk.counts[index] = risk.counts[index].checked_add(1).ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?;
+    risk.total_count = risk.total_count.checked_add(1).ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?;
+    risk.reserved_lamports = risk_liability(risk, draw)?;
+    Ok(())
+}
+
+fn remove_pooled_ticket(risk: &mut DrawRisk, draw: &Draw, numbers: [u8; 2]) -> Result<()> {
+    validate_draw_risk(risk, draw)?;
+    let index = pair_index(numbers)?;
+    risk.counts[index] = risk.counts[index].checked_sub(1).ok_or_else(|| error!(ErrorCode::InvalidDrawRisk))?;
+    risk.total_count = risk.total_count.checked_sub(1).ok_or_else(|| error!(ErrorCode::InvalidDrawRisk))?;
+    risk.reserved_lamports = risk_liability(risk, draw)?;
+    Ok(())
+}
+
+fn replace_reserved_liability(vault: &Account<Vault>, previous: u64, next: u64, incoming: u64, payout: u64) -> Result<u64> {
+    let info = vault.to_account_info();
+    let reserved = reserved_liability(&vault.padding)?;
+    let rent = Rent::get()?.minimum_balance(info.data_len());
+    replace_liability_balances(info.lamports(), rent, reserved, previous, next, incoming, payout)
+}
+
+fn replace_liability_balances(balance: u64, rent: u64, reserved: u64, previous: u64, next: u64, incoming: u64, payout: u64) -> Result<u64> {
+    let required_before = rent.checked_add(reserved).ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?;
+    require!(balance >= required_before, ErrorCode::InvalidVaultReserve);
+    let after = reserved.checked_sub(previous).and_then(|other| other.checked_add(next))
+        .ok_or_else(|| error!(ErrorCode::InvalidVaultReserve))?;
+    let balance_after = balance.checked_add(incoming).and_then(|funds| funds.checked_sub(payout))
+        .ok_or_else(|| error!(ErrorCode::InsufficientVaultFunds))?;
+    let required_after = rent.checked_add(after).ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?;
+    require!(balance_after >= required_after, ErrorCode::InsufficientVaultFunds);
+    Ok(after)
+}
+
+fn reconcile_risk(vault: &mut Account<Vault>, draw: &Draw, risk: &mut DrawRisk) -> Result<()> {
+    require_eq!(draw.status, 2, ErrorCode::ResultNotPublished);
+    validate_draw_risk(risk, draw)?;
+    let previous = risk.reserved_lamports;
+    risk.phase = 1;
+    risk.reserved_lamports = risk_liability(risk, draw)?;
+    require!(risk.reserved_lamports <= previous, ErrorCode::InvalidDrawRisk);
+    let after = replace_reserved_liability(vault, previous, risk.reserved_lamports, 0, 0)?;
+    vault.padding[..8].copy_from_slice(&after.to_le_bytes());
+    if previous > risk.reserved_lamports {
+        emit!(DrawRiskReconciled { draw_time: draw.draw_time, previous_lamports: previous, reserved_lamports: risk.reserved_lamports });
+    }
+    Ok(())
+}
+
+fn pooled_prize_snapshot(prize: u64) -> Result<[u8; 32]> {
+    let mut padding = prize_snapshot(prize)?;
+    padding[0] = 3;
+    Ok(padding)
+}
+
+fn pooled_ticket_prize(padding: &[u8; 32]) -> Result<u64> {
+    require!(padding[0] == 3 && padding[9] <= 1 && padding[10..].iter().all(|byte| *byte == 0), ErrorCode::InvalidTicketReserve);
+    let prize = u64::from_le_bytes(padding[1..9].try_into().map_err(|_| error!(ErrorCode::InvalidTicketReserve))?);
+    require!(prize > 0, ErrorCode::InvalidTicketReserve);
+    Ok(prize)
+}
+
+fn validate_pooled_ticket(ticket: &Ticket, draw: &Draw) -> Result<()> {
+    require_eq!(ticket.draw_time, draw.draw_time, ErrorCode::MismatchedDraw);
+    require_eq!(ticket.paid_lamports, draw.ticket_cost_lamports, ErrorCode::InvalidTicketCost);
+    require_eq!(pooled_ticket_prize(&ticket.padding)?, draw.payout_lamports, ErrorCode::InvalidPayout);
+    require!(valid_numbers(&ticket.numbers), ErrorCode::InvalidNumbers);
+    Ok(())
+}
+
+fn settle_pooled_liability(vault: &mut Account<Vault>, risk: &mut DrawRisk, draw: &Draw, numbers: [u8; 2], owner: &AccountInfo, payout: u64) -> Result<()> {
+    let previous = risk.reserved_lamports;
+    remove_pooled_ticket(risk, draw, numbers)?;
+    let after = replace_reserved_liability(vault, previous, risk.reserved_lamports, 0, payout)?;
+    let info = vault.to_account_info();
+    let rent = Rent::get()?.minimum_balance(info.data_len());
+    let (vault_after, owner_after) = payout_balances(info.lamports(), owner.lamports(), payout, rent, after)?;
+    if payout > 0 {
+        **info.try_borrow_mut_lamports()? = vault_after;
+        **owner.try_borrow_mut_lamports()? = owner_after;
+    }
+    vault.padding[..8].copy_from_slice(&after.to_le_bytes());
+    Ok(())
+}
+
 fn request_seed(draw: &Pubkey, nonce: &[u8; 32]) -> [u8; 32] {
     hashv(&[RANDOMNESS_DOMAIN, crate::ID.as_ref(), draw.as_ref(), nonce]).to_bytes()
 }
@@ -578,6 +861,89 @@ pub struct BuyTicket<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(ticket_nonce: u64, draw_time: i64, numbers: [u8; 2])]
+pub struct BuyPooledTicket<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, constraint = config.is_initialized @ ErrorCode::Uninitialized)]
+    pub config: Account<'info, Config>,
+    #[account(mut, seeds = [VAULT_SEED], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+    #[account(init, payer = user, space = Ticket::SPACE, seeds = [TICKET_SEED, user.key().as_ref(), &ticket_nonce.to_le_bytes()], bump)]
+    pub ticket: Account<'info, Ticket>,
+    #[account(mut)]
+    pub user: Signer<'info>,
+    pub system_program: Program<'info, System>,
+    /// CHECK: Canonical PDA is allocated and deserialized with owner and size validation.
+    #[account(mut, seeds = [DRAW_SEED, &draw_time.to_le_bytes()], bump)]
+    pub draw: UncheckedAccount<'info>,
+    /// CHECK: Canonical risk PDA is allocated and deserialized with owner and size validation.
+    #[account(mut, seeds = [RISK_SEED, RISK_VERSION_SEED, &draw_time.to_le_bytes()], bump)]
+    pub draw_risk: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(draw_time: i64)]
+pub struct ReconcileDrawRisk<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, constraint = config.is_initialized @ ErrorCode::Uninitialized)]
+    pub config: Account<'info, Config>,
+    #[account(mut, seeds = [VAULT_SEED], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+    #[account(seeds = [DRAW_SEED, &draw_time.to_le_bytes()], bump = draw.bump, constraint = draw.draw_time == draw_time @ ErrorCode::MismatchedDraw)]
+    pub draw: Account<'info, Draw>,
+    #[account(mut, seeds = [RISK_SEED, RISK_VERSION_SEED, &draw_time.to_le_bytes()], bump = draw_risk.bump)]
+    pub draw_risk: Box<Account<'info, DrawRisk>>,
+}
+
+#[derive(Accounts)]
+pub struct SettlePooledTicket<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, constraint = config.is_initialized @ ErrorCode::Uninitialized)]
+    pub config: Account<'info, Config>,
+    #[account(mut, seeds = [VAULT_SEED], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+    #[account(mut, seeds = [TICKET_SEED, ticket.user.as_ref(), &ticket.nonce.to_le_bytes()], bump = ticket.bump, constraint = !ticket.settled @ ErrorCode::AlreadySettled)]
+    pub ticket: Account<'info, Ticket>,
+    #[account(seeds = [DRAW_SEED, &ticket.draw_time.to_le_bytes()], bump = draw.bump)]
+    pub draw: Account<'info, Draw>,
+    #[account(mut, seeds = [RISK_SEED, RISK_VERSION_SEED, &ticket.draw_time.to_le_bytes()], bump = draw_risk.bump)]
+    pub draw_risk: Box<Account<'info, DrawRisk>>,
+    #[account(mut)]
+    pub user: SystemAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ReleasePooledLosingTicket<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, constraint = config.is_initialized @ ErrorCode::Uninitialized)]
+    pub config: Account<'info, Config>,
+    #[account(mut, seeds = [VAULT_SEED], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+    #[account(mut, seeds = [TICKET_SEED, ticket.user.as_ref(), &ticket.nonce.to_le_bytes()], bump = ticket.bump, constraint = !ticket.settled @ ErrorCode::AlreadySettled)]
+    pub ticket: Account<'info, Ticket>,
+    #[account(seeds = [DRAW_SEED, &ticket.draw_time.to_le_bytes()], bump = draw.bump)]
+    pub draw: Account<'info, Draw>,
+    #[account(mut, seeds = [RISK_SEED, RISK_VERSION_SEED, &ticket.draw_time.to_le_bytes()], bump = draw_risk.bump)]
+    pub draw_risk: Box<Account<'info, DrawRisk>>,
+}
+
+#[derive(Accounts)]
+pub struct RefundPooledTicket<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, constraint = config.is_initialized @ ErrorCode::Uninitialized)]
+    pub config: Account<'info, Config>,
+    #[account(mut, seeds = [VAULT_SEED], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+    #[account(mut, seeds = [TICKET_SEED, ticket.user.as_ref(), &ticket.nonce.to_le_bytes()], bump = ticket.bump, constraint = !ticket.settled @ ErrorCode::AlreadySettled)]
+    pub ticket: Account<'info, Ticket>,
+    #[account(seeds = [DRAW_SEED, &ticket.draw_time.to_le_bytes()], bump = draw.bump)]
+    pub draw: Account<'info, Draw>,
+    #[account(mut, seeds = [RISK_SEED, RISK_VERSION_SEED, &ticket.draw_time.to_le_bytes()], bump = draw_risk.bump)]
+    pub draw_risk: Box<Account<'info, DrawRisk>>,
+    #[account(mut)]
+    pub user: SystemAccount<'info>,
+    /// CHECK: Open draws require the System Program sentinel; pending draws validate their committed oracle request.
+    pub oracle_request: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 #[instruction(draw_time: i64)]
 pub struct RequestDraw<'info> {
     #[account(seeds = [CONFIG_SEED], bump = config.bump, constraint = config.is_initialized @ ErrorCode::Uninitialized)]
@@ -721,6 +1087,17 @@ pub struct Draw {
 }
 impl Draw { pub const SPACE: usize = 181; }
 
+#[account]
+pub struct DrawRisk {
+    pub draw_time: i64,
+    pub bump: u8,
+    pub phase: u8,
+    pub total_count: u64,
+    pub reserved_lamports: u64,
+    pub counts: Vec<u64>,
+}
+impl DrawRisk { pub const SPACE: usize = 8 + 8 + 1 + 1 + 8 + 8 + 4 + PAIR_COUNT * 8; }
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
 pub struct UatRules {
     pub revision: u8,
@@ -751,6 +1128,22 @@ pub struct RandomnessRules {
     pub oracle_program: Pubkey,
     pub refund_after_seconds: u32,
     pub pending_request_space: u16,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
+pub struct LiabilityRules {
+    pub revision: u8,
+    pub daily_pooled: bool,
+    pub quick_pooled: bool,
+    pub pair_count: u16,
+    pub risk_account_space: u16,
+}
+
+#[event]
+pub struct DrawRiskReconciled {
+    pub draw_time: i64,
+    pub previous_lamports: u64,
+    pub reserved_lamports: u64,
 }
 
 #[event]
@@ -859,6 +1252,8 @@ pub enum ErrorCode {
     RefundNotAvailable,
     #[msg("A winning ticket must preserve its owner-directed prize claim")]
     WinningTicketCannotRelease,
+    #[msg("The draw's combination liability account is invalid")]
+    InvalidDrawRisk,
 }
 
 #[cfg(test)]
@@ -1088,5 +1483,131 @@ mod tests {
         assert_eq!(release.len(), 4);
         assert!(!release[0].is_writable && release[1].is_writable && release[2].is_writable && !release[3].is_writable);
         assert!(release.iter().all(|meta| !meta.is_signer));
+    }
+
+    fn pooled_draw() -> Draw {
+        let mut round = draw(DAILY_OFFSET);
+        round.is_daily = true;
+        round.ticket_cost_lamports = 3;
+        round.payout_lamports = 20;
+        round
+    }
+
+    fn empty_risk(round: &Draw) -> DrawRisk {
+        DrawRisk { draw_time: round.draw_time, bump: 255, phase: 0, total_count: 0, reserved_lamports: 0, counts: vec![0; PAIR_COUNT] }
+    }
+
+    #[test]
+    fn pooled_pair_indexes_cover_every_ordered_distinct_pair_once() {
+        let mut seen = [false; PAIR_COUNT];
+        for first in MIN_NUMBER..=MAX_NUMBER {
+            for second in MIN_NUMBER..=MAX_NUMBER {
+                if first == second { assert!(pair_index([first, second]).is_err()); continue; }
+                let index = pair_index([first, second]).unwrap();
+                assert!(index < PAIR_COUNT && !seen[index]);
+                seen[index] = true;
+            }
+        }
+        assert!(seen.iter().all(|value| *value));
+        assert!(pair_index([1, 22]).is_err());
+        assert!(pair_index([2, 23]).is_err());
+    }
+
+    #[test]
+    fn pooled_daily_risk_preserves_refunds_then_late_fulfillment_for_every_small_sequence() {
+        let mut round = pooled_draw();
+        let pairs = [[2, 3], [2, 4], [2, 5]];
+        for a in 0..=3 {
+            for b in 0..=3 {
+                for c in 0..=3 {
+                    let counts = [a, b, c];
+                    let mut original = empty_risk(&round);
+                    for (pair, count) in pairs.iter().zip(counts) {
+                        for _ in 0..count { add_pooled_ticket(&mut original, &round, *pair).unwrap(); }
+                    }
+                    let expected = counts.iter().sum::<u64>() * 3 + counts.iter().max().unwrap() * 17;
+                    assert_eq!(original.reserved_lamports, expected);
+                    for ra in 0..=a {
+                        for rb in 0..=b {
+                            for rc in 0..=c {
+                                let mut risk = empty_risk(&round);
+                                risk.counts = original.counts.clone();
+                                risk.total_count = original.total_count;
+                                risk.reserved_lamports = original.reserved_lamports;
+                                let refunded = [ra, rb, rc];
+                                for (pair, count) in pairs.iter().zip(refunded) {
+                                    for _ in 0..count {
+                                        let before = risk.reserved_lamports;
+                                        remove_pooled_ticket(&mut risk, &round, *pair).unwrap();
+                                        assert!(before >= 3 + risk.reserved_lamports);
+                                    }
+                                }
+                                for winner in 0..=3 {
+                                    let winning_count = if winner == 3 { 0 } else { counts[winner] - refunded[winner] };
+                                    assert!(original.reserved_lamports >= refunded.iter().sum::<u64>() * 3 + winning_count * 20);
+                                    round.status = 2;
+                                    round.numbers = if winner == 3 { [22, 2] } else { pairs[winner] };
+                                    risk.phase = 1;
+                                    assert_eq!(risk_liability(&risk, &round).unwrap(), winning_count * 20);
+                                    round.status = 0;
+                                    risk.phase = 0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn pooled_balanced_tickets_release_outcomes_but_never_other_draw_or_old_ticket_backing() {
+        let mut round = pooled_draw();
+        round.ticket_cost_lamports = DAILY_COST;
+        round.payout_lamports = 2 * BASE_PRIZE;
+        let mut risk = empty_risk(&round);
+        for first in MIN_NUMBER..=MAX_NUMBER {
+            for second in MIN_NUMBER..=MAX_NUMBER {
+                if first != second { add_pooled_ticket(&mut risk, &round, [first, second]).unwrap(); }
+            }
+        }
+        assert_eq!(risk.total_count, 420);
+        assert_eq!(risk.reserved_lamports, 4_618_750_000);
+        let old_liability = 9 * BASE_PRIZE;
+        let global = old_liability + risk.reserved_lamports;
+        round.status = 2;
+        round.numbers = [2, 22];
+        let before = risk.reserved_lamports;
+        risk.phase = 1;
+        risk.reserved_lamports = risk_liability(&risk, &round).unwrap();
+        assert_eq!(risk.reserved_lamports, 2 * BASE_PRIZE);
+        let after = replace_liability_balances(100 + global, 100, global, before, risk.reserved_lamports, 0, 0).unwrap();
+        assert_eq!(after, old_liability + 2 * BASE_PRIZE);
+        let before_claim = risk.reserved_lamports;
+        remove_pooled_ticket(&mut risk, &round, [2, 22]).unwrap();
+        assert_eq!(risk.reserved_lamports, 0);
+        assert!(remove_pooled_ticket(&mut risk, &round, [2, 22]).is_err());
+        assert_eq!(replace_liability_balances(100 + after, 100, after, before_claim, 0, 0, before_claim).unwrap(), old_liability);
+    }
+
+    #[test]
+    fn pooled_tickets_cannot_enter_full_prize_release_handlers() {
+        let old = prize_snapshot(2 * BASE_PRIZE).unwrap();
+        let pooled = pooled_prize_snapshot(2 * BASE_PRIZE).unwrap();
+        assert!(pooled_ticket_prize(&old).is_err());
+        assert!(ticket_prize(&pooled).is_err());
+        assert_eq!(pooled_ticket_prize(&pooled).unwrap(), 2 * BASE_PRIZE);
+        let round = pooled_draw();
+        let mut risk = empty_risk(&round);
+        risk.counts[0] = 1;
+        assert!(risk_liability(&risk, &round).is_err());
+        risk.total_count = 1;
+        risk.phase = 2;
+        assert!(risk_liability(&risk, &round).is_err());
+        risk.phase = 1;
+        assert!(risk_liability(&risk, &round).is_err());
+        assert!(replace_liability_balances(100, 10, 91, 0, 0, 0, 0).is_err());
+        assert!(replace_liability_balances(100, 10, 90, 91, 0, 0, 0).is_err());
+        assert!(replace_liability_balances(100, 10, 90, 0, 1, 0, 0).is_err());
     }
 }

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   AddressLookupTableAccount,
+  ComputeBudgetProgram,
   Keypair,
   PublicKey,
   SystemProgram,
@@ -508,6 +509,99 @@ test("signed app transactions support both Hiperia programs while rejecting dire
     );
   assert.throws(() =>
     validateRpcRequest(applicationTransaction(Array(9).fill(appRequest))),
+  );
+});
+
+test("wallet compute budgets fit alongside bounded multi-ticket draw completion", async () => {
+  const budgets = [
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 500_000 }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 5_000 }),
+  ];
+  const completion = (losses) => [
+    appInstruction(vrfIdl, "finalize_draw"),
+    appInstruction(vrfIdl, "reclaim_oracle_funding"),
+    ...Array.from({ length: losses }, () =>
+      appInstruction(vrfIdl, "release_losing_ticket"),
+    ),
+  ];
+  for (const losses of [3, 5, 6]) {
+    for (const instructions of [
+      [...budgets, ...completion(losses)],
+      [...completion(losses), ...budgets],
+    ])
+      assert.doesNotThrow(() =>
+        validateRpcRequest(applicationTransaction(instructions)),
+      );
+  }
+  let calls = 0;
+  const rpc = applicationTransaction([...budgets, ...completion(5)]);
+  rpc.params[1] = {
+    encoding: "base64",
+    skipPreflight: false,
+    preflightCommitment: "confirmed",
+    maxRetries: 0,
+  };
+  const forward = createRpcProxy({
+    fetchUpstream: async (_url, init) => {
+      calls++;
+      assert.deepEqual(JSON.parse(init.body), rpc);
+      return reply(init.body, "confirmed-test-signature");
+    },
+  });
+  assert.equal((await forward(rpc)).result, "confirmed-test-signature");
+  assert.equal(calls, 1);
+  for (const instructions of [
+    completion(7),
+    [...budgets.slice(0, 1), ...completion(7)],
+    [...budgets, ...completion(7)],
+  ])
+    assert.throws(() =>
+      validateRpcRequest(applicationTransaction(instructions)),
+    );
+});
+
+test("compute budget exceptions reject malformed, repeated and unrelated instructions", () => {
+  const app = appInstruction(vrfIdl, "finalize_draw");
+  const limit = ComputeBudgetProgram.setComputeUnitLimit({ units: 500_000 });
+  const price = ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 0 });
+  const rawBudget = (data, keys = []) =>
+    new TransactionInstruction({
+      programId: ComputeBudgetProgram.programId,
+      data: Buffer.from(data),
+      keys,
+    });
+  for (const instructions of [
+    [limit, limit, app],
+    [price, price, app],
+    [limit, price, limit, app],
+    [rawBudget([2]), app],
+    [rawBudget([2, 1, 0, 0, 0, 0]), app],
+    [rawBudget([3]), app],
+    [rawBudget([3, 0, 0, 0, 0, 0, 0, 0, 0, 0]), app],
+    [rawBudget([1, 0, 0, 0, 0]), app],
+    [
+      rawBudget(limit.data, [
+        { pubkey: keypair.publicKey, isSigner: false, isWritable: false },
+      ]),
+      app,
+    ],
+    [ComputeBudgetProgram.setComputeUnitLimit({ units: 0 }), app],
+    [ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_001 }), app],
+  ])
+    assert.throws(() =>
+      validateRpcRequest(applicationTransaction(instructions)),
+    );
+  assert.doesNotThrow(() =>
+    validateRpcRequest(
+      applicationTransaction([
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
+        price,
+        app,
+      ]),
+    ),
+  );
+  assert.throws(() =>
+    validateRpcRequest(applicationTransaction([limit, price])),
   );
 });
 

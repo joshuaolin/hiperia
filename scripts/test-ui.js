@@ -4,8 +4,9 @@ mkdirSync("test-results", { recursive: true });
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
 const errors = [];
+const origin = process.env.UI_TEST_ORIGIN || "http://127.0.0.1:5173";
 page.on("pageerror", (error) => errors.push(error.message));
-await page.goto("http://127.0.0.1:5173/", {
+await page.goto(`${origin}/`, {
   waitUntil: "networkidle",
   timeout: 60000,
 });
@@ -66,6 +67,24 @@ if (ticketAlignment.top > 1 || ticketAlignment.bottom > 1)
   );
 await ticketDisclosure.locator(":scope > summary").click();
 await expect(ticketDisclosure).not.toHaveAttribute("open");
+const collapsedAlignment = await page
+  .locator(".dashboard-grid")
+  .evaluate((element) => {
+    const purchase = element
+      .querySelector(".purchase-panel")
+      .getBoundingClientRect();
+    const tickets = element
+      .querySelector(".tickets-panel")
+      .getBoundingClientRect();
+    return Math.max(
+      Math.abs(purchase.top - tickets.top),
+      Math.abs(purchase.bottom - tickets.bottom),
+    );
+  });
+if (collapsedAlignment > 1)
+  throw Error(
+    "Collapsed ticket panel must align with the purchase panel on desktop",
+  );
 await page.getByRole("link", { name: "Your tickets", exact: true }).click();
 await expect(ticketDisclosure).toHaveAttribute("open", "");
 await ticketDisclosure.locator(":scope > summary").click();
@@ -117,6 +136,24 @@ for (const width of [320, 390, 768, 1440]) {
 await page.setViewportSize({ width: 390, height: 844 });
 await page.screenshot({ path: "test-results/mobile.png", fullPage: true });
 const navigation = page.locator(".sidebar-nav");
+const navigationToggle = page.locator(".navigation-toggle");
+await expect(navigation).not.toBeVisible();
+await navigationToggle.click();
+await expect(navigationToggle).toHaveAttribute("aria-expanded", "true");
+await expect(navigation).toBeVisible();
+await page.keyboard.press("Escape");
+await expect(navigation).not.toBeVisible();
+await expect(navigationToggle).toBeFocused();
+await navigationToggle.click();
+await page.locator(".network-badge").click();
+await expect(navigation).not.toBeVisible();
+await navigationToggle.click();
+await page.setViewportSize({ width: 1440, height: 1100 });
+await expect(navigationToggle).not.toBeVisible();
+await expect(navigation).toBeVisible();
+await page.setViewportSize({ width: 390, height: 844 });
+await expect(navigation).not.toBeVisible();
+await navigationToggle.click();
 await expect(
   navigation.getByRole("button", {
     name: "Lemon, coming in 2027",
@@ -143,11 +180,12 @@ if (
 await navigation
   .getByRole("link", { name: "Support Hiperia", exact: true })
   .click();
+await expect(navigation).not.toBeVisible();
 await expect(
-  navigation.getByRole("link", { name: "Support Hiperia", exact: true }),
+  navigation.locator('a[href="#support"]'),
 ).toHaveAttribute("aria-current", "location");
 await expect(
-  navigation.getByRole("link", { name: "Dodos", exact: true }),
+  navigation.locator('a[href="#dodos"]'),
 ).not.toHaveAttribute("aria-current");
 const backToTop = page.getByRole("button", {
   name: "Back to top",
@@ -183,10 +221,10 @@ await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 await expect(backToTop).toHaveCount(0);
 await expect(page.locator("#dodos-heading")).toBeFocused();
 await expect(
-  navigation.getByRole("link", { name: "Dodos", exact: true }),
+  navigation.locator('a[href="#dodos"]'),
 ).toHaveAttribute("aria-current", "location");
 await expect(
-  navigation.getByRole("link", { name: "Support Hiperia", exact: true }),
+  navigation.locator('a[href="#support"]'),
 ).not.toHaveAttribute("aria-current");
 if (await page.getByRole("button", { name: "Number 1", exact: true }).count())
   throw Error("Number 01 is still offered for a new ticket");
@@ -234,7 +272,7 @@ for (const path of [
   "/.local/solana/deployer-keypair.json",
   "/.local/solana/hiperia_program-keypair.json",
 ]) {
-  const response = await page.request.get("http://127.0.0.1:5173" + path);
+  const response = await page.request.get(origin + path);
   if (response.status() !== 403)
     throw Error(`Development server exposes private artifact: ${path}`);
 }
@@ -254,6 +292,9 @@ console.log(
     desktopSupportLayout: true,
     collapsibleGuide: true,
     mobileBackToTop: true,
+    mobileNavigationToggle: true,
+    navigationKeyboardAndOutsideClose: true,
+    collapsedTicketAlignment: true,
     backToTopHiddenForInputsAndWalletModal: true,
     reducedMotion: true,
   }),

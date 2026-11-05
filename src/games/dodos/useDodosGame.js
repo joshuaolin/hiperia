@@ -27,6 +27,13 @@ import {
   gameSources,
   loadGameSnapshot,
 } from "./gameSnapshot.js";
+import {
+  executeRevealDraws,
+  getRevealDraws,
+  revealDrawKey,
+  reviewedQuoteFor,
+} from "./revealDraws.js";
+import { matchesPurchaseQuote, purchaseQuoteKey } from "./purchaseQuote.js";
 
 export function useDodosGame() {
   const { connection } = useConnection();
@@ -62,7 +69,10 @@ export function useDodosGame() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [refreshFailure, setRefreshFailure] = useState(null);
   const [refreshUntil, setRefreshUntil] = useState(0);
-  const [oracleQuote, setOracleQuote] = useState(null);
+  const [oracleQuotes, setOracleQuotes] = useState({});
+  const [purchaseQuoteState, setPurchaseQuoteState] = useState(null);
+  const [purchaseQuoteAttempt, setPurchaseQuoteAttempt] = useState(0);
+  const [purchaseQuoteRetryAt, setPurchaseQuoteRetryAt] = useState(0);
   const loadedData = useRef(null);
   const refreshRetryTimer = useRef(null);
   const mounted = useRef(false);
@@ -89,6 +99,105 @@ export function useDodosGame() {
   const dailyDraws = getUpcomingDrawTimes(now);
   if (!quickDraw && !dailyDraws.includes(Number(drawChoice)))
     dailyDraws.unshift(Number(drawChoice));
+  const purchaseQuoteRequired = Boolean(client.primary && !quickDraw);
+  const selectedDrawTime = quickDraw ? null : Number(drawChoice);
+  const selectedQuoteKey = purchaseQuoteKey(selectedNumbers, selectedDrawTime);
+  const canQuotePurchase = Boolean(
+    purchaseQuoteRequired &&
+      config?.liabilityRules?.dailyPooled === true &&
+      uatReady &&
+      authorized &&
+      canSign &&
+      networkStatus.network?.allowed &&
+      !drawExpired &&
+      !isLoading &&
+      !pending &&
+      selectedQuoteKey &&
+      typeof client.getPurchaseQuote === "function",
+  );
+  const quoteContextMatches = Boolean(
+    purchaseQuoteState?.source === client &&
+      purchaseQuoteState?.config === config &&
+      purchaseQuoteState?.walletKey === dataKey &&
+      purchaseQuoteState?.key === selectedQuoteKey,
+  );
+  const purchaseQuote =
+    canQuotePurchase &&
+    quoteContextMatches &&
+    matchesPurchaseQuote(
+      purchaseQuoteState.quote,
+      selectedNumbers,
+      selectedDrawTime,
+      config,
+    )
+      ? purchaseQuoteState.quote
+      : null;
+
+  useEffect(() => {
+    if (!canQuotePurchase) return;
+    let active = true;
+    const context = {
+      source: client,
+      config,
+      walletKey: dataKey,
+      key: selectedQuoteKey,
+    };
+    setPurchaseQuoteState({
+      ...context,
+      loading: true,
+      quote: null,
+      error: "",
+    });
+    const timer = setTimeout(async () => {
+      setPurchaseQuoteRetryAt(Date.now() + 8000);
+      try {
+        const quote = await client.getPurchaseQuote(selectedNumbers, {
+          drawTime: selectedDrawTime,
+          config,
+        });
+        if (
+          !matchesPurchaseQuote(
+            quote,
+            selectedNumbers,
+            selectedDrawTime,
+            config,
+          )
+        )
+          throw new Error(
+            "The current daily backing quote could not be verified.",
+          );
+        if (active && activeClient.current === client)
+          setPurchaseQuoteState({
+            ...context,
+            loading: false,
+            quote,
+            error: "",
+          });
+      } catch {
+        if (active && activeClient.current === client)
+          setPurchaseQuoteState({
+            ...context,
+            loading: false,
+            quote: null,
+            error:
+              "The daily backing quote is unavailable. Refresh the quote before buying; existing tickets and claims remain available.",
+          });
+      }
+    }, 500);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [
+    canQuotePurchase,
+    client,
+    config,
+    dataKey,
+    selectedQuoteKey,
+    selectedNumbers,
+    selectedDrawTime,
+    purchaseQuoteAttempt,
+  ]);
 
   function requireUatWallet() {
     if (!uatReady)
@@ -247,7 +356,7 @@ export function useDodosGame() {
     setError("");
     setRefreshFailure(null);
     setRefreshUntil(0);
-    setOracleQuote(null);
+    setOracleQuotes({});
     if (loadedData.current?.key === dataKey)
       setData({ ...loadedData.current, source: client });
     const pendingPurchase = client.getPendingPurchase();
@@ -328,6 +437,7 @@ export function useDodosGame() {
       number > MAX_NUMBER
     )
       return;
+    setPurchaseQuoteState(null);
     setSelectedNumbers((values) =>
       values.includes(number)
         ? values.filter((value) => value !== number)
@@ -339,6 +449,7 @@ export function useDodosGame() {
 
   function randomize() {
     if (busy.current) return;
+    setPurchaseQuoteState(null);
     setSelectedNumbers(createQuickPick());
   }
 
@@ -355,6 +466,84 @@ export function useDodosGame() {
       await action();
       return message;
     }, true);
+  }
+
+  async function reviewDrawCosts(ticket) {
+    requireUatWallet();
+    if (!client.primary || client.clientFor(ticket) !== client.primary)
+      throw new Error(
+        "This ticket retains its original draw rules and does not use an oracle reveal.",
+      );
+    const quote = await client.getOracleQuote(ticket.drawTime);
+    assertActive();
+    const reviewed = {
+      ...quote,
+      drawTime: ticket.drawTime,
+      sourceProgram: ticket.sourceProgram,
+      source: client,
+    };
+    assertReviewedOracleQuote(reviewed, quote, ticket);
+    setOracleQuotes((previous) => ({
+      ...previous,
+      [revealDrawKey(ticket)]: reviewed,
+    }));
+    return reviewed;
+  }
+
+  function forgetDrawQuote(ticket) {
+    setOracleQuotes((previous) => {
+      const next = { ...previous };
+      delete next[revealDrawKey(ticket)];
+      return next;
+    });
+  }
+
+  async function recordTicketDraw(ticket, batchLabel = "") {
+    requireTicketWallet();
+    const oracleDraw = Boolean(
+      client.primary && client.clientFor(ticket) === client.primary,
+    );
+    if (oracleDraw && ticket.draw?.status === "open") requireUatWallet();
+    const result = await client.recordDraw(ticket.drawTime, {
+      ticket,
+      assertActive,
+      onProgress: (progress) => {
+        assertActive();
+        if (progress.phase === "request") {
+          try {
+            const reviewed = reviewedQuoteFor(oracleQuotes, ticket);
+            assertReviewedOracleQuote(
+              reviewed?.source === client ? reviewed : null,
+              progress.quote,
+              ticket,
+            );
+          } catch (failure) {
+            forgetDrawQuote(ticket);
+            throw failure;
+          }
+          setMessage(
+            `${batchLabel}Approve the randomness request. Your wallet funds the reviewed oracle fee and account rent once for this draw, including all its tickets.`,
+          );
+        } else if (progress.phase === "pending") {
+          setMessage(
+            `${batchLabel}Randomness was requested on-chain. Waiting for the oracle; no additional request is being sent.`,
+          );
+        } else if (progress.phase === "finalize") {
+          setMessage(
+            batchLabel +
+              (progress.reclaimSkipped
+                ? "Oracle randomness is ready. Approve draw completion to record the result. Request funding will remain available for separate reclamation to its original requester."
+                : "Oracle randomness is ready. Approve draw completion to record the result. Any reclaimed request funding goes only to the original requester.") +
+              (progress.plannedLosses
+                ? ` This approval also processes up to ${progress.plannedLosses} losing ticket${progress.plannedLosses === 1 ? "" : "s"} to release reserved prizes.`
+                : ""),
+          );
+        }
+      },
+    });
+    assertActive();
+    if (oracleDraw) forgetDrawQuote(ticket);
+    return { ...result, oracleDraw };
   }
 
   const refreshCooldown = Math.max(0, Math.ceil((refreshUntil - now) / 1000));
@@ -386,7 +575,27 @@ export function useDodosGame() {
     connected: Boolean(publicKey),
     publicGame: Boolean(client.primary && client.legacy),
     programIds,
-    oracleQuote: oracleQuote?.source === client ? oracleQuote : null,
+    oracleQuotes: Object.fromEntries(
+      Object.entries(oracleQuotes).filter(
+        ([, quote]) => quote.source === client,
+      ),
+    ),
+    purchaseQuote,
+    purchaseQuoteRequired,
+    purchaseQuoteLoading:
+      canQuotePurchase &&
+      (!quoteContextMatches || purchaseQuoteState.loading === true),
+    purchaseQuoteError:
+      canQuotePurchase && quoteContextMatches ? purchaseQuoteState.error : "",
+    purchaseQuoteCooldown: Math.max(
+      0,
+      Math.ceil((purchaseQuoteRetryAt - now) / 1000),
+    ),
+    refreshPurchaseQuote: () => {
+      if (busy.current || Date.now() < purchaseQuoteRetryAt) return;
+      setPurchaseQuoteState(null);
+      setPurchaseQuoteAttempt((attempt) => attempt + 1);
+    },
     canSign,
     uatReady,
     authorized,
@@ -399,7 +608,10 @@ export function useDodosGame() {
     dailyDraws,
     drawExpired,
     setDrawChoice: (value) => {
-      if (!busy.current) setDrawChoice(value);
+      if (!busy.current) {
+        setPurchaseQuoteState(null);
+        setDrawChoice(value);
+      }
     },
     now,
     isLoading: isLoading || data.source !== client,
@@ -414,12 +626,22 @@ export function useDodosGame() {
     select,
     randomize,
     clearSelection: () => {
-      if (!busy.current) setSelectedNumbers([]);
+      if (!busy.current) {
+        setPurchaseQuoteState(null);
+        setSelectedNumbers([]);
+      }
     },
     purchase: () =>
       runAction(async () => {
         requireUatWallet();
         const drawTime = getSelectedDrawTime(drawChoice);
+        if (
+          purchaseQuoteRequired &&
+          (!purchaseQuote || purchaseQuote.canPurchase !== true)
+        )
+          throw new Error(
+            "Review the current backing and account rent quote for this ordered pair and daily draw before buying.",
+          );
         const ticket = await client.buyTicket(selectedNumbers, {
           drawTime,
           config,
@@ -434,71 +656,65 @@ export function useDodosGame() {
     reviewReveal: (ticket) =>
       runAction(
         async () => {
-          requireUatWallet();
-          if (!client.primary || client.clientFor(ticket) !== client.primary)
-            throw new Error(
-              "This ticket retains its original draw rules and does not use an oracle reveal.",
-            );
-          const quote = await client.getOracleQuote(ticket.drawTime);
-          assertActive();
-          const reviewed = {
-            ...quote,
-            drawTime: ticket.drawTime,
-            sourceProgram: ticket.sourceProgram,
-            source: client,
-          };
-          assertReviewedOracleQuote(reviewed, quote, ticket);
-          setOracleQuote(reviewed);
+          await reviewDrawCosts(ticket);
           return "Reveal costs loaded from Devnet. Review the fee and rent before choosing Reveal result.";
         },
         false,
         { refreshAfter: false },
       ),
-    publish: (ticket) =>
+    reviewAllReveals: () =>
+      runAction(
+        async () => {
+          const draws = getRevealDraws(
+            data.source === client ? data.tickets : [],
+            Math.floor(Date.now() / 1000),
+          );
+          let requests = 0;
+          for (const draw of draws) {
+            if (draw.status !== "open") continue;
+            await reviewDrawCosts(draw.ticket);
+            requests += 1;
+          }
+          return `${draws.length} unique draw${draws.length === 1 ? "" : "s"} checked. ${requests} new reveal${requests === 1 ? "" : "s"} quoted once per draw; shared daily tickets do not add another oracle charge. Review the total before continuing.`;
+        },
+        false,
+        { refreshAfter: false },
+      ),
+    publishAll: () =>
       runAction(async () => {
         requireTicketWallet();
-        const oracleDraw = Boolean(
-          client.primary && client.clientFor(ticket) === client.primary,
-        );
-        if (oracleDraw && ticket.draw?.status === "open") requireUatWallet();
-        const result = await client.recordDraw(ticket.drawTime, {
-          ticket,
+        const tickets = data.source === client ? data.tickets : [];
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        const draws = getRevealDraws(tickets, nowSeconds);
+        for (const draw of draws) {
+          if (draw.status !== "open") continue;
+          requireUatWallet();
+          const quote = reviewedQuoteFor(oracleQuotes, draw.ticket);
+          assertReviewedOracleQuote(
+            quote?.source === client ? quote : null,
+            quote,
+            draw.ticket,
+          );
+        }
+        let batchLabel = "";
+        const progress = await executeRevealDraws(tickets, nowSeconds, {
           assertActive,
-          onProgress: (progress) => {
-            assertActive();
-            if (progress.phase === "request") {
-              try {
-                assertReviewedOracleQuote(
-                  oracleQuote?.source === client ? oracleQuote : null,
-                  progress.quote,
-                  ticket,
-                );
-              } catch (failure) {
-                setOracleQuote(null);
-                throw failure;
-              }
-              setMessage(
-                "Approve the randomness request. Your wallet funds the reviewed oracle fee and account rent.",
-              );
-            } else if (progress.phase === "pending") {
-              setMessage(
-                "Randomness was requested on-chain. Waiting for the oracle; no additional request is being sent.",
-              );
-            } else if (progress.phase === "finalize") {
-              setMessage(
-                (progress.reclaimSkipped
-                  ? "Oracle randomness is ready. Approve draw completion to record the result. Request funding will remain available for separate reclamation to its original requester."
-                  : "Oracle randomness is ready. Approve draw completion to record the result. Any reclaimed request funding goes only to the original requester.") +
-                  (progress.plannedLosses
-                    ? ` This approval also processes up to ${progress.plannedLosses} losing ticket${progress.plannedLosses === 1 ? "" : "s"} to release reserved prizes.`
-                    : ""),
-              );
-            }
+          onProgress: ({ index, total, draw }) => {
+            batchLabel = `Draw ${index + 1} of ${total}, ${formatDrawTime(draw.ticket.drawTime)} UTC+8. `;
+            setMessage(`${batchLabel}Checking its recorded oracle state.`);
           },
+          recordDraw: (ticket) => recordTicketDraw(ticket, batchLabel),
         });
-        assertActive();
-        if (oracleDraw) {
-          setOracleQuote(null);
+        const released = progress.results.reduce(
+          (total, { result }) => total + (result.releasedLosses ?? 0),
+          0,
+        );
+        return `${progress.completed} draw${progress.completed === 1 ? "" : "s"} completed; ${progress.pending} awaiting the oracle. All tickets in each shared daily draw use its single recorded result.${released ? ` ${released} losing ticket${released === 1 ? "" : "s"} processed; their prize reserves are available again.` : ""} Refresh to check ticket states. No new request is needed for pending draws.`;
+      }, true),
+    publish: (ticket) =>
+      runAction(async () => {
+        const result = await recordTicketDraw(ticket);
+        if (result.oracleDraw) {
           if (result.pending || result.phase === "pending")
             return "The randomness request is recorded on-chain and is still awaiting oracle fulfillment. Refresh to check its status; no new request is needed.";
           return `The verified oracle result is recorded on-chain. View its numbers and oracle proof in ticket history.${result.releasedLosses ? ` ${result.releasedLosses} losing ticket${result.releasedLosses === 1 ? "" : "s"} processed; their prize reserves are available again.` : ""}${result.cleanupSkipped ? " Remaining losing reserves can be processed by the operator." : ""}${result.refreshWarning ? " Refresh to verify the latest ticket states." : ""}${result.reclaimSkipped ? " Unused request funding remains available for separate reclamation to its original requester." : ""}`;

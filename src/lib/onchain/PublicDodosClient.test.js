@@ -61,23 +61,42 @@ function fixture() {
   return { mux, primary, legacy, ticket };
 }
 
-test("the VRF factory is enabled only for the explicit UAT build flag", () => {
+test("the VRF factory requires an explicit public Devnet build profile", () => {
   const options = {
     connection: new Connection("http://127.0.0.1:8899"),
     storage: null,
   };
+  const devnet = "https://api.devnet.solana.com";
   for (const env of [
     {},
+    { VITE_APP_ENV: "testnet-demo", VITE_SOLANA_RPC: devnet },
+    { VITE_APP_ENV: "uat", VITE_SOLANA_RPC: devnet },
     { VITE_APP_ENV: "testnet-demo", VITE_GAME_VERSION: "vrf" },
-    { VITE_APP_ENV: "uat" },
-  ])
-    assert.ok(createDodosClient(options, env) instanceof DodosClient);
-  assert.ok(
-    createDodosClient(options, {
+    {
+      VITE_APP_ENV: "testnet-demo",
+      VITE_GAME_VERSION: "vrf",
+      VITE_SOLANA_RPC: "https://api.mainnet-beta.solana.com",
+    },
+    {
       VITE_APP_ENV: "uat",
       VITE_GAME_VERSION: "vrf",
-    }) instanceof PublicDodosClient,
-  );
+      VITE_SOLANA_RPC: "https://api.testnet.solana.com",
+    },
+    {
+      VITE_APP_ENV: "production",
+      VITE_GAME_VERSION: "vrf",
+      VITE_SOLANA_RPC: devnet,
+    },
+  ])
+    assert.ok(createDodosClient(options, env) instanceof DodosClient);
+  for (const VITE_APP_ENV of ["uat", "testnet-demo"])
+    assert.ok(
+      createDodosClient(options, {
+        VITE_APP_ENV,
+        VITE_GAME_VERSION: "vrf",
+        VITE_SOLANA_RPC: devnet,
+      }) instanceof PublicDodosClient,
+    );
 });
 
 test("legacy and new tickets preserve identical nonces as distinct on-chain accounts", async () => {

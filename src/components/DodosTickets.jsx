@@ -3,7 +3,14 @@ import TicketList from "./TicketList.jsx";
 import useLinkedDisclosure from "./useLinkedDisclosure.js";
 import { explorerAccountUrl } from "../lib/explorer.js";
 import { formatCountdown, formatDrawTime } from "../lib/onchain/time.js";
+import { isDailyDrawTime } from "../lib/onchain/time.js";
 import { VRF_PROGRAM_ID } from "../lib/onchain/vrfProtocol.js";
+import {
+  getRevealDraws,
+  revealDrawKey,
+  revealCostTotal,
+  reviewedQuoteFor,
+} from "../games/dodos/revealDraws.js";
 import {
   getClaimableTickets,
   getTicketState,
@@ -30,7 +37,16 @@ function HistoryLink({ address, network, children }) {
       target="_blank"
       rel="noopener noreferrer"
     >
-      {children} <span aria-hidden="true">↗</span>
+      {children}
+      <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path
+          d="M11 4h5v5M16 4l-8 8M8 4H4v12h12v-4"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
     </a>
   ) : null;
 }
@@ -85,15 +101,148 @@ function OracleQuote({ quote }) {
   );
 }
 
-function TicketCard({ ticket, game, currentSeconds, canTransact }) {
+function DrawActions({ draw, game, canTransact, quote }) {
+  const { ticket, status } = draw;
+  const canUse = canTransact && game.uatReady && game.authorized;
+  return (
+    <li className="bulk-reveal-draw" data-draw-key={draw.key}>
+      <div className="bulk-reveal-header">
+        <div>
+          <strong>
+            {isDailyDrawTime(ticket.drawTime) ? "Daily draw" : "Quick draw"}
+          </strong>
+          <span>{formatDrawTime(ticket.drawTime)} · UTC+8</span>
+        </div>
+        <span className="count-badge">
+          {draw.tickets.length} ticket{draw.tickets.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <p className="ticket-action-note">
+        {status === "pending"
+          ? "Oracle requested. All tickets in this draw will share its recorded result; no additional request is needed."
+          : status === "fulfilled"
+            ? "Oracle ready. One completion records the result for every ticket in this draw."
+            : "One reveal request covers every ticket in this draw. Oracle funding is charged once per draw."}
+      </p>
+      {status === "open" && quote && <OracleQuote quote={quote} />}
+      <div className="bulk-reveal-actions">
+        {status === "open" && !quote && (
+          <button
+            className="button button-secondary"
+            disabled={!canUse || typeof game.reviewReveal !== "function"}
+            onClick={() => game.reviewReveal(ticket)}
+          >
+            Review reveal costs
+          </button>
+        )}
+        {((status === "open" && quote) || status === "fulfilled") && (
+          <button
+            className="button button-secondary"
+            disabled={!canUse}
+            onClick={() => game.publish(ticket)}
+          >
+            {status === "fulfilled" ? "Complete draw" : "Reveal result"}
+          </button>
+        )}
+        {status === "pending" && (
+          <button
+            className="button button-secondary"
+            disabled={
+              game.pending || game.isLoading || game.refreshCooldown > 0
+            }
+            onClick={game.refresh}
+          >
+            Check oracle status
+          </button>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function RevealAll({ draws, game, canTransact }) {
+  if (!draws.length) return null;
+  const quotes = game.oracleQuotes ?? {};
+  const total = revealCostTotal(draws, quotes);
+  const openCount = draws.filter((draw) => draw.status === "open").length;
+  const ticketCount = draws.reduce(
+    (count, draw) => count + draw.tickets.length,
+    0,
+  );
+  const canUse = canTransact && game.uatReady && game.authorized;
+  return (
+    <section className="bulk-reveal-panel" aria-label="Draw reveal actions">
+      <div className="bulk-reveal-header">
+        <div>
+          <h3>Reveal your draws</h3>
+          <p>
+            {ticketCount} ticket{ticketCount === 1 ? "" : "s"} · {draws.length}{" "}
+            unique draw{draws.length === 1 ? "" : "s"}
+          </p>
+        </div>
+        <button
+          className="button button-secondary"
+          disabled={
+            !canUse ||
+            openCount === 0 ||
+            typeof game.reviewAllReveals !== "function"
+          }
+          onClick={game.reviewAllReveals}
+        >
+          Review all reveal costs
+        </button>
+      </div>
+      <p className="bulk-reveal-totals" role="status">
+        {total === null
+          ? `Review costs for ${openCount} new reveal${openCount === 1 ? "" : "s"} before continuing.`
+          : `New reveal funding: ${amount(total)} across ${openCount} draw${openCount === 1 ? "" : "s"}. Network fees are separate.`}
+      </p>
+      <div className="bulk-reveal-actions">
+        <button
+          className="button button-primary"
+          disabled={
+            !canUse || total === null || typeof game.publishAll !== "function"
+          }
+          onClick={game.publishAll}
+        >
+          Reveal / complete all ({draws.length} draw
+          {draws.length === 1 ? "" : "s"})
+        </button>
+      </div>
+      <p className="ticket-action-note">
+        Each draw uses separate wallet approvals, in order. A new reveal can
+        require another approval after the oracle responds. Cancelling stops the
+        remaining draws; confirmed requests and results stay recorded. Shared
+        daily tickets need only one draw action.
+      </p>
+      <ul className="bulk-reveal-list">
+        {draws.map((draw) => (
+          <DrawActions
+            key={draw.key}
+            draw={draw}
+            game={game}
+            canTransact={canTransact}
+            quote={reviewedQuoteFor(quotes, draw.ticket)}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function TicketCard({
+  ticket,
+  game,
+  currentSeconds,
+  canTransact,
+  groupedDraw,
+}) {
   const state = getTicketState(ticket, currentSeconds);
   const { due, published, won, settled, refunded } = state;
   const oracleDraw = ticket.legacy !== true && Boolean(ticket.draw);
   const oracleStatus = oracleDraw ? ticket.draw.status : null;
   const requestExpired =
     oracleStatus === "open" && ticket.refundEligible === true;
-  const quote =
-    game.oracleQuote?.drawTime === ticket.drawTime ? game.oracleQuote : null;
   const canUseTicket =
     canTransact &&
     (ticket.legacy === true || (game.uatReady && game.authorized));
@@ -257,8 +406,11 @@ function TicketCard({ ticket, game, currentSeconds, canTransact }) {
       </div>
       {!settled && !refunded && due && !published && oracleDraw && (
         <>
-          {oracleStatus === "open" && !requestExpired && quote && (
-            <OracleQuote quote={quote} />
+          {groupedDraw && (
+            <p className="ticket-draw-group-note">
+              Reveal controls are grouped above. One recorded result covers all
+              tickets in this draw.
+            </p>
           )}
           {ticket.draw.oracleReadError && (
             <p className="ticket-action-note" role="status">
@@ -267,40 +419,6 @@ function TicketCard({ ticket, game, currentSeconds, canTransact }) {
             </p>
           )}
           <div className="ticket-actions">
-            {oracleStatus === "open" && !requestExpired && !quote && (
-              <button
-                className="button button-secondary"
-                disabled={
-                  !canUseTicket || typeof game.reviewReveal !== "function"
-                }
-                onClick={() => game.reviewReveal(ticket)}
-              >
-                Review reveal costs
-              </button>
-            )}
-            {((oracleStatus === "open" && !requestExpired && quote) ||
-              oracleStatus === "fulfilled") && (
-              <button
-                className="button button-secondary"
-                disabled={!canUseTicket}
-                onClick={() => game.publish(ticket)}
-              >
-                {oracleStatus === "fulfilled"
-                  ? "Complete draw"
-                  : "Reveal result"}
-              </button>
-            )}
-            {oracleStatus === "pending" && (
-              <button
-                className="button button-secondary"
-                disabled={
-                  game.pending || game.isLoading || game.refreshCooldown > 0
-                }
-                onClick={game.refresh}
-              >
-                Check oracle status
-              </button>
-            )}
             {ticket.refundEligible === true && (
               <button
                 className="button button-secondary"
@@ -358,6 +476,8 @@ export default function DodosTickets({ game }) {
   const groups = groupTicketsByState(game.tickets, currentSeconds);
   const visibleTickets = groups[filter];
   const claimable = getClaimableTickets(game.tickets, currentSeconds);
+  const revealDraws = getRevealDraws(groups.ongoing, currentSeconds);
+  const revealKeys = new Set(revealDraws.map((draw) => draw.key));
   const hasLoaded =
     game.connected &&
     (game.historyLoaded === true ||
@@ -465,6 +585,13 @@ export default function DodosTickets({ game }) {
             request several approvals for a large batch; network fees apply.
           </p>
         )}
+        {filter === "ongoing" && hasLoaded && !game.isLoading && (
+          <RevealAll
+            draws={revealDraws}
+            game={game}
+            canTransact={canTransact}
+          />
+        )}
         {game.isLoading ? (
           <div className="empty-state" role="status">
             Loading on-chain tickets…
@@ -511,6 +638,7 @@ export default function DodosTickets({ game }) {
                 game={game}
                 currentSeconds={currentSeconds}
                 canTransact={canTransact}
+                groupedDraw={revealKeys.has(revealDrawKey(ticket))}
               />
             )}
           />

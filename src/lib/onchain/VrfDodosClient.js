@@ -1,12 +1,18 @@
 import { AnchorProvider, Program, utils } from "@coral-xyz/anchor";
 import BN from "bn.js";
 import { Buffer } from "buffer";
-import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import {
+  ComputeBudgetProgram,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
 import vrfIdl from "../../idl/hiperia_vrf.json" with { type: "json" };
 import { DodosClient, UAT_ADMIN } from "./DodosClient.js";
-import { loadRandomnessRules } from "./chainRules.js";
+import { loadRandomnessRules, loadLiabilityRules } from "./chainRules.js";
 import {
   getDrawPda,
+  getDrawRiskPda,
   getOracleClientPda,
   getOracleRequestPda,
   getTicketPda,
@@ -18,14 +24,31 @@ import { MIN_NUMBER, MAX_NUMBER, PICK_COUNT } from "./rules.js";
 import { DEVNET_GENESIS_HASH } from "../network.js";
 import { OracleClient, deriveOracleSeed } from "./OracleClient.js";
 import { winningNumbersFromRandomness } from "./vrfRandomness.js";
+import { DrawRiskClient } from "./DrawRiskClient.js";
+import { isDailyDrawTime } from "./time.js";
 
 const emptyKey = SystemProgram.programId.toBase58();
 
 function transactionPacketBytes(transaction, payer) {
+  const budgetTags = new Set(
+    transaction.instructions
+      .filter((instruction) =>
+        instruction.programId.equals(ComputeBudgetProgram.programId),
+      )
+      .map((instruction) => instruction.data[0]),
+  );
+  const walletBudget = [
+    ...(!budgetTags.has(2)
+      ? [ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 })]
+      : []),
+    ...(!budgetTags.has(3)
+      ? [ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 0 })]
+      : []),
+  ];
   const estimate = new Transaction({
     feePayer: new PublicKey(payer),
     recentBlockhash: emptyKey,
-  }).add(...transaction.instructions);
+  }).add(...walletBudget, ...transaction.instructions);
   try {
     return estimate.serialize({
       requireAllSignatures: false,
@@ -76,6 +99,8 @@ export class VrfDodosClient extends DodosClient {
     super({ ...options, program });
     this.randomnessRulesLoader =
       options.randomnessRulesLoader ?? loadRandomnessRules;
+    this.liabilityRulesLoader = options.liabilityRulesLoader ?? loadLiabilityRules;
+    this.drawRisk = new DrawRiskClient(this);
     this.oracle =
       options.oracle ?? new OracleClient({ connection: this.connection });
     this.oracleNonces = new Map();
@@ -108,9 +133,10 @@ export class VrfDodosClient extends DodosClient {
   async getConfig() {
     const config = await super.getConfig();
     if (!config) return null;
-    const [randomnessRules, capacity] = await Promise.all([
+    const [randomnessRules, capacity, liabilityRules] = await Promise.all([
       this.getRandomnessRules(),
       this.getCapacity(config),
+      this.getLiabilityRules().catch(() => null),
     ]);
     if (
       config.rulesRevision !== 6 ||
@@ -122,12 +148,41 @@ export class VrfDodosClient extends DodosClient {
       ...config,
       randomnessRules,
       capacity,
+      liabilityRules,
       permissionlessSettlement: true,
       randomnessMode: "orao-vrf",
       randomnessVerified: true,
       legacy: false,
       sourceProgram: this.program.programId.toBase58(),
     };
+  }
+
+  getLiabilityRules({ fresh = false } = {}) {
+    return this.liabilityRulesLoader({ connection: this.connection, program: this.program,
+      configAddress: this.configAddress, payer: new PublicKey(UAT_ADMIN), now: this.now, fresh });
+  }
+
+  async recoverPendingPurchase() {
+    const pending = this.getPendingPurchase();
+    if (!pending) return null;
+    const account = await this.getTicket(pending.id);
+    if (!account) return null;
+    const version = account.padding[0];
+    if (![2, 3].includes(version)) throw new Error("The confirmed ticket's backing version could not be verified.");
+    const receipt = { id: pending.id, numbers: Array.from(account.numbers),
+      drawTime: Number(account.drawTime.toString()), settled: account.settled,
+      signature: null, recovered: true, reserveVersion: version, pooled: version === 3,
+      sourceProgram: this.program.programId.toBase58(), legacy: false };
+    this.completePurchase();
+    return receipt;
+  }
+
+  async getPurchaseQuote(numbers, { drawTime, config } = {}) {
+    if (!isDailyDrawTime(Number(drawTime))) return null;
+    if (!validNumbers(numbers)) throw new Error("Choose two different numbers first.");
+    const active = config ?? await this.getConfig();
+    if (!active?.randomnessVerified) throw new Error("Wait for the verified draw rules.");
+    return this.drawRisk.quote(numbers, { drawTime, config: active });
   }
 
   async getCapacity(config) {
@@ -300,7 +355,7 @@ export class VrfDodosClient extends DodosClient {
         const drawTime = amount(account.drawTime);
         const draw = draws.get(account.drawTime.toString()) ?? null;
         const snapshot = Buffer.from(account.padding);
-        if (snapshot[0] !== 2)
+        if (![2, 3].includes(snapshot[0]) || snapshot[9] > 1 || snapshot.subarray(10).some((byte) => byte !== 0))
           throw new Error("The ticket prize snapshot could not be verified.");
         return {
           id: account.nonce.toString(),
@@ -310,6 +365,8 @@ export class VrfDodosClient extends DodosClient {
           drawTime,
           settled: account.settled,
           refunded: snapshot[9] === 1,
+          reserveVersion: snapshot[0],
+          pooled: snapshot[0] === 3,
           paidLamports: amount(account.paidLamports),
           payoutLamports: amount(snapshot.readBigUInt64LE(1)),
           sourceProgram: this.program.programId.toBase58(),
@@ -365,6 +422,12 @@ export class VrfDodosClient extends DodosClient {
       throw new Error(
         "Wait for the verified public VRF game rules before purchasing.",
       );
+    const pooled = isDailyDrawTime(Number(drawTime));
+    if (pooled) {
+      const quote = await this.getPurchaseQuote(selection, { drawTime, config });
+      if (!quote?.canPurchase)
+        throw new Error("This combination needs more prize backing. Choose another combination or draw.");
+    }
     this.rememberPurchase({
       id: String(nonce),
       numbers: selection,
@@ -373,8 +436,8 @@ export class VrfDodosClient extends DodosClient {
     try {
       await this.assertDevnet();
       options.assertActive?.();
-      const signature = await this.program.methods
-        .buyTicket(new BN(String(nonce)), new BN(String(drawTime)), selection)
+      const method = pooled ? "buyPooledTicket" : "buyTicket";
+      const signature = await this.program.methods[method](new BN(String(nonce)), new BN(String(drawTime)), selection)
         .accountsStrict({
           config: this.configAddress,
           vault: this.vaultAddress,
@@ -386,6 +449,7 @@ export class VrfDodosClient extends DodosClient {
           user: this.wallet.publicKey,
           systemProgram: SystemProgram.programId,
           draw: getDrawPda(drawTime, this.program.programId)[0],
+          ...(pooled ? { drawRisk: getDrawRiskPda(drawTime, this.program.programId)[0] } : {}),
         })
         .rpc({ maxRetries: 0 });
       this.completePurchase();
@@ -395,6 +459,8 @@ export class VrfDodosClient extends DodosClient {
         drawTime: Number(drawTime),
         signature,
         settled: false,
+        reserveVersion: pooled ? 3 : 2,
+        pooled,
         sourceProgram: this.program.programId.toBase58(),
         legacy: false,
       };
@@ -577,6 +643,18 @@ export class VrfDodosClient extends DodosClient {
         })
         .instruction(),
     );
+    let pooledReconcileIncluded = false;
+    try {
+      const risk = await this.drawRisk.read(draw.drawTime);
+      if (risk && risk.phase === 0) {
+        transaction.add(await this.reconcileDrawRiskInstruction(draw.drawTime));
+        if (transaction.instructions.length <= 8 && transactionPacketBytes(transaction, payer) <= 1232)
+          pooledReconcileIncluded = true;
+        else transaction.instructions.pop();
+      }
+    } catch {
+      pooledReconcileIncluded = false;
+    }
     let reclaimSkipped = false;
     let requester;
     try {
@@ -608,6 +686,7 @@ export class VrfDodosClient extends DodosClient {
       );
     const addresses = [];
     let cleanupSkipped = false;
+    const requiredInstructionCount = transaction.instructions.length;
     try {
       const entries = await this.program.account.ticket.all([
         {
@@ -630,7 +709,7 @@ export class VrfDodosClient extends DodosClient {
           account.drawTime.toString() !== String(draw.drawTime) ||
           account.settled !== false ||
           snapshot.length !== 32 ||
-          snapshot[0] !== 2 ||
+          ![2, 3].includes(snapshot[0]) ||
           snapshot[9] !== 0 ||
           snapshot.subarray(10).some((byte) => byte !== 0) ||
           snapshot.readBigUInt64LE(1) === 0n ||
@@ -648,6 +727,7 @@ export class VrfDodosClient extends DodosClient {
           id: account.nonce.toString(),
           user: account.user.toBase58(),
           drawTime: draw.drawTime,
+          reserveVersion: snapshot[0],
         });
         transaction.add(instruction);
         if (transactionPacketBytes(transaction, payer) > 1232) {
@@ -658,9 +738,7 @@ export class VrfDodosClient extends DodosClient {
         addresses.push(publicKey.toBase58());
       }
     } catch {
-      transaction.instructions.splice(
-        prefixInstructions.length + 1 + Number(!reclaimSkipped),
-      );
+      transaction.instructions.splice(requiredInstructionCount);
       addresses.length = 0;
       cleanupSkipped = true;
     }
@@ -671,6 +749,7 @@ export class VrfDodosClient extends DodosClient {
       lossAddresses: addresses,
       cleanupSkipped,
       reclaimSkipped,
+      pooledReconcileIncluded,
       packetBytes: transactionPacketBytes(transaction, payer),
       winningNumbers,
     };
@@ -765,6 +844,7 @@ export class VrfDodosClient extends DodosClient {
       releasedLosses,
       settled: releasedLosses,
       refreshWarning,
+      pooledReconciled: plan.pooledReconcileIncluded,
     };
   }
 
@@ -884,6 +964,23 @@ export class VrfDodosClient extends DodosClient {
     };
   }
 
+  reconcileDrawRiskInstruction(drawTime) {
+    return this.program.methods.reconcileDrawRisk(new BN(String(drawTime)))
+      .accountsStrict({ config: this.configAddress, vault: this.vaultAddress,
+        draw: getDrawPda(drawTime, this.program.programId)[0],
+        drawRisk: getDrawRiskPda(drawTime, this.program.programId)[0] }).instruction();
+  }
+
+  async ticketReserveVersion(ticket) {
+    if ([2, 3].includes(ticket.reserveVersion)) return ticket.reserveVersion;
+    if (ticket.pooled === true) return 3;
+    const owner = new PublicKey(ticket.user ?? this.wallet.publicKey);
+    const account = await this.program.account.ticket.fetchNullable(
+      getTicketPda(owner, ticket.id, this.program.programId)[0],
+    ).catch(() => null);
+    return account?.padding?.[0] === 3 ? 3 : 2;
+  }
+
   async settleInstruction(ticket) {
     const result = await this.getResult(ticket.drawTime);
     if (
@@ -892,9 +989,10 @@ export class VrfDodosClient extends DodosClient {
       ticket.numbers.some((number, index) => number !== result.numbers[index])
     )
       return this.releaseLosingInstruction(ticket);
-    return this.program.methods
-      .settleTicket()
-      .accountsStrict(this.settlementAccounts(ticket))
+    const pooled = await this.ticketReserveVersion(ticket) === 3;
+    return this.program.methods[pooled ? "settlePooledTicket" : "settleTicket"]()
+      .accountsStrict({ ...this.settlementAccounts(ticket),
+        ...(pooled ? { drawRisk: getDrawRiskPda(ticket.drawTime, this.program.programId)[0] } : {}) })
       .instruction();
   }
 
@@ -905,9 +1003,10 @@ export class VrfDodosClient extends DodosClient {
       ticket: address,
       draw,
     } = this.settlementAccounts(ticket);
-    return this.program.methods
-      .releaseLosingTicket()
-      .accountsStrict({ config, vault, ticket: address, draw })
+    const pooled = await this.ticketReserveVersion(ticket) === 3;
+    return this.program.methods[pooled ? "releasePooledLosingTicket" : "releaseLosingTicket"]()
+      .accountsStrict({ config, vault, ticket: address, draw,
+        ...(pooled ? { drawRisk: getDrawRiskPda(ticket.drawTime, this.program.programId)[0] } : {}) })
       .instruction();
   }
 
@@ -968,10 +1067,11 @@ export class VrfDodosClient extends DodosClient {
       );
     await this.assertDevnet();
     options.assertActive?.();
-    return this.program.methods
-      .refundTicket()
+    const pooled = await this.ticketReserveVersion(ticket) === 3;
+    return this.program.methods[pooled ? "refundPooledTicket" : "refundTicket"]()
       .accountsStrict({
         ...this.settlementAccounts(ticket),
+        ...(pooled ? { drawRisk: getDrawRiskPda(ticket.drawTime, this.program.programId)[0] } : {}),
         oracleRequest:
           draw.status === "open"
             ? SystemProgram.programId

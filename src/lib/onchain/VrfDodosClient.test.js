@@ -7,6 +7,7 @@ import {
   Keypair,
   PublicKey,
   SystemProgram,
+  Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
 import { VrfDodosClient } from "./VrfDodosClient.js";
@@ -190,6 +191,9 @@ function fixture() {
     } else if (name === "getAccessRules") {
       type = "accessRules";
       data = { revision: 1, publicPlay: true, publicResults: true };
+    } else if (name === "getLiabilityRules") {
+      type = "liabilityRules";
+      data = { revision: 1, dailyPooled: true, quickPooled: false, pairCount: 420, riskAccountSpace: 3398 };
     } else {
       type = "randomnessRules";
       data = {
@@ -318,6 +322,7 @@ test("verified revision six uses zero winning sentinels only with the new oracle
   assert.deepEqual(config.winningNumbers, [0, 0]);
   assert.equal(config.randomnessRules.oracleProgram, ORAO_PROGRAM_ID);
   assert.equal(config.capacity.freeLamports, 5_000_000_000);
+  assert.equal(config.liabilityRules.dailyPooled, true);
   assert.equal(
     config.capacity.dailySlots,
     Math.floor(5_000_000_000 / (2_000_000_000 - 6_250_000)),
@@ -964,6 +969,52 @@ test("cleanup is trimmed further when a prefix consumes the packet byte budget",
   assert.ok(plan.packetBytes <= 1232);
   assert.equal(plan.cleanupSkipped, true);
   assert.equal(plan.reclaimSkipped, false);
+  const walletTransaction = new Transaction({
+    feePayer: setup.client.wallet.publicKey,
+    recentBlockhash: SystemProgram.programId.toBase58(),
+  }).add(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1000 }),
+    ...plan.transaction.instructions,
+  );
+  const walletPacketBytes = walletTransaction.serialize({
+    requireAllSignatures: false,
+    verifySignatures: false,
+  }).length;
+  assert.ok(walletPacketBytes <= 1232);
+  assert.equal(plan.packetBytes, walletPacketBytes);
+});
+
+test("completion reserves packet space for only the missing wallet budget instructions", async () => {
+  for (const existingBudget of [[], [2], [3], [2, 3]]) {
+    const setup = fixture();
+    for (let nonce = 1; nonce <= 9; nonce++) addCleanupTicket(setup, nonce);
+    const instructions = new Map([
+      [2, ComputeBudgetProgram.setComputeUnitLimit({ units: 500_000 })],
+      [3, ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1000 })],
+    ]);
+    const plan = await cleanupPlan(setup, {
+      prefixInstructions: existingBudget.map((tag) => instructions.get(tag)),
+    });
+    const walletTransaction = new Transaction({
+      feePayer: setup.client.wallet.publicKey,
+      recentBlockhash: SystemProgram.programId.toBase58(),
+    }).add(
+      ...[2, 3]
+        .filter((tag) => !existingBudget.includes(tag))
+        .map((tag) => instructions.get(tag)),
+      ...plan.transaction.instructions,
+    );
+    const walletPacketBytes = walletTransaction.serialize({
+      requireAllSignatures: false,
+      verifySignatures: false,
+    }).length;
+    assert.ok(walletPacketBytes <= 1232);
+    assert.equal(plan.packetBytes, walletPacketBytes);
+    assert.ok(plan.plannedLosses <= 6);
+    assert.ok(plan.transaction.instructions.length <= 8);
+    assert.equal(setup.state.sent.length, 1);
+  }
 });
 
 test("an optional cleanup scan failure does not block finalization or add another approval", async () => {

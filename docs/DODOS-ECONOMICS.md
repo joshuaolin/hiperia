@@ -27,6 +27,28 @@ For a draw with `N` tickets and operator-paid draw cost `F`, expected net profit
 
 A production launch needs measured expenses below that budget, an unpredictable and uniformly sampled result, sales closing before the result can be known, and an independent review. Positive expected margin does not make a predictable or manipulable randomizer profitable.
 
+## Daily backing by combination
+
+The November 4 daily model preserves the same entry and per-ticket prize while sharing backing between mutually exclusive ordered combinations in one draw. New daily tickets use a separate v3 snapshot and canonical draw-risk account. Existing tickets retain their original reserves, claims and refunds; quick draws retain their current full-prize backing.
+
+For `N` outstanding pooled tickets, entry `c`, prize `p`, and the largest ticket count on one exact ordered pair `M`, pre-final backing is:
+
+`R = N × c + M × (p − c)`
+
+This backs the largest possible winning combination **plus refunds for the other combinations**. Using only the larger of total entry refunds and one winning bucket would be unsafe: some entries can refund during an oracle outage before a later fulfillment establishes another combination's winners. Each partial refund decrements its actual pair and count, returns only its paid entry, and recomputes backing atomically.
+
+| Same daily draw | Previous full-ticket backing | Pooled backing |
+| --- | ---: | ---: |
+| Three tickets on three different pairs | 6 SOL | 2.0125 SOL |
+| One ticket on each of the 420 pairs | 840 SOL | 4.61875 SOL |
+| Ten tickets on the same pair | 20 SOL | 20 SOL |
+
+These figures describe liability, not SOL paid out on purchase. Buying transfers only the entry into the vault. Once verified ORAO randomness finalizes a draw, permissionless reconciliation retains only the actual outstanding winners' prizes; the other outcomes release their backing without transferring SOL or marking individual tickets settled. A winning claim transfers its snapshot prize once to the immutable ticket owner and reduces its winning count. Payouts remain available without expiry.
+
+This greatly increases capacity for diversified daily entries but does not create unlimited fixed prizes. Same-pair concentration and independent quick draws can still fill a finite treasury. Twenty SOL cannot guarantee arbitrary correlated winning payouts. A model without a treasury-based ticket cap would require different prize terms, such as sharing a self-funded pot; that change is not made here.
+
+The first pooled daily entry creates a 3398-byte shared risk account. Its creator pays the actual chain rent separately, shown in checkout; later entries reuse it. Rent is not taken from the prize vault, and no automatic account-close or rent-recovery promise is made. Game and oracle prices, rents, counts and balances come from chain data. Expected house margins above remain unchanged; they are not a guarantee against variance, infrastructure costs or deliberate concentration.
+
 ## Legacy fixed-result UAT
 
 Referral campaign v1 adds optional entries of 0.0071 SOL quick and 0.0062 SOL daily for a valid active binding. Under the same hypothetical fair random assumptions, those leave approximately 66.47% and 23.20% expected gross margins before expenses, respectively. Prizes and full reserves are unchanged. Referral account storage and network fees are separate from the discount; no cash payment or future airdrop is funded by this change. Opting out returns future entries to normal pricing. The frontend reads these offers from readonly metadata. See [referrals](./REFERRALS.md).

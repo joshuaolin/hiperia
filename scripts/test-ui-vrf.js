@@ -88,6 +88,15 @@ tickets[6].result = {
   oracleRequest: tickets[6].draw.oracleRequest,
   oracleProgram,
 };
+tickets[2].drawTime = now / 1000 - 3 * 3600;
+tickets.push(
+  ...[8, 9].map((id) => ({
+    ...tickets[2],
+    id: String(id),
+    address: address(50 + id),
+    draw: { ...tickets[2].draw },
+  })),
+);
 const fixture = {
   now,
   tickets,
@@ -109,6 +118,13 @@ const fixture = {
     pickCount: 2,
     dailyHours: [2, 6, 10, 14, 18, 22],
     scheduleIntervalSeconds: 14_400,
+    liabilityRules: {
+      revision: 1,
+      dailyPooled: true,
+      quickPooled: false,
+      pairCount: 420,
+      riskAccountSpace: 3398,
+    },
     randomnessRules: {
       oracleProgram,
       refundAfterSeconds: 86_400,
@@ -196,29 +212,37 @@ const costs = ${JSON.stringify(quote)};
 window.__oracleUiActions = [];
 export function useDodosGame() {
   const [tickets, setTickets] = useState(initial.tickets);
-  const [oracleQuote, setQuote] = useState(null);
+  const [oracleQuotes, setQuotes] = useState({});
   const [selectedNumbers, setNumbers] = useState([]);
   const [drawChoice, setDraw] = useState(String(initial.now / 1000 + 18000));
   const [capacity, setCapacity] = useState(initial.config.capacity);
   const [randomnessVerified, setVerified] = useState(true);
   const [metadataAvailable, setMetadataAvailable] = useState(true);
+  const [liabilityAvailable, setLiabilityAvailable] = useState(true);
+  const [purchaseQuote, setPurchaseQuote] = useState(null);
   const action = (type, ticket) => window.__oracleUiActions.push(type + (ticket ? ':' + ticket.id : ''));
   window.__setTestCapacity = setCapacity;
   window.__setTestVerification = setVerified;
   window.__setTestMetadataAvailable = setMetadataAvailable;
-  return { ...initial, tickets, config: metadataAvailable ? { ...initial.config, capacity, randomnessVerified } : null, oracleQuote,
+  window.__setTestLiabilityAvailable = setLiabilityAvailable;
+  window.__setTestPurchaseQuote = setPurchaseQuote;
+  const quoteDraw = (ticket) => setQuotes((values) => ({ ...values, [ticket.sourceProgram + ':' + ticket.drawTime]: { drawTime: ticket.drawTime, sourceProgram: ticket.sourceProgram, ...costs } }));
+  return { ...initial, tickets, config: metadataAvailable ? { ...initial.config, capacity, randomnessVerified, liabilityRules: liabilityAvailable ? initial.config.liabilityRules : null } : null, oracleQuotes,
     connected: true, publicGame: true, canSign: true, authorized: metadataAvailable, uatReady: metadataAvailable, networkAllowed: true, historyLoaded: true,
     isLoading: false, loadFailed: false, refreshWarning: false, refreshCooldown: 0,
-    pending: false, selectedNumbers, drawChoice, quickDraw: drawChoice === 'quick', drawExpired: false,
-    dailyDraws: [initial.now / 1000 + 18000], setDrawChoice: setDraw,
+    pending: false, selectedNumbers, drawChoice, quickDraw: drawChoice === 'quick', drawExpired: false, purchaseQuote,
+    purchaseQuoteLoading: false, purchaseQuoteError: '', purchaseQuoteCooldown: 0, refreshPurchaseQuote() {},
+    dailyDraws: [initial.now / 1000 + 18000, initial.now / 1000 + 32400], setDrawChoice: setDraw,
     select(number) { setNumbers((values) => values.includes(number) ? values.filter((n) => n !== number) : [...values, number]); },
     clearSelection() { setNumbers([]); }, randomize() { setNumbers([3, 4]); }, purchase() { action('purchase'); },
-    reviewReveal(ticket) { action('quote', ticket); setQuote({ drawTime: ticket.drawTime, ...costs }); },
+    reviewReveal(ticket) { action('quote', ticket); quoteDraw(ticket); },
+    reviewAllReveals() { action('quoteAll'); const seen = new Set(); for (const ticket of tickets) { const key = ticket.sourceProgram + ':' + ticket.drawTime; if (!seen.has(key) && ticket.draw?.status === 'open' && !ticket.refundEligible && !ticket.refunded && !ticket.settled) { seen.add(key); quoteDraw(ticket); } } },
+    publishAll() { action('publishAll'); },
     publish(ticket) { action(ticket.draw.status === 'fulfilled' ? 'complete' : 'reveal', ticket);
-      setTickets((values) => values.map((entry) => entry.id !== ticket.id ? entry : ticket.draw.status === 'fulfilled'
+      setTickets((values) => values.map((entry) => entry.sourceProgram !== ticket.sourceProgram || entry.drawTime !== ticket.drawTime ? entry : ticket.draw.status === 'fulfilled'
         ? { ...entry, draw: { ...entry.draw, status: 'final' }, result: { id: entry.draw.address, isPublished: true, numbers: [7, 13] } }
         : { ...entry, draw: { ...entry.draw, status: 'pending', oracleRequest: ${JSON.stringify(address(120))} } })); },
-    refresh() { action('refresh'); setTickets((values) => values.map((entry) => entry.id === '3' ? { ...entry, draw: { ...entry.draw, status: 'fulfilled' } } : entry)); },
+    refresh() { action('refresh'); setTickets((values) => values.map((entry) => entry.sourceProgram === initial.tickets[2].sourceProgram && entry.drawTime === initial.tickets[2].drawTime ? { ...entry, draw: { ...entry.draw, status: 'fulfilled' } } : entry)); },
     refund(ticket) { action('refund', ticket); setTickets((values) => values.map((entry) => entry.id === ticket.id ? { ...entry, refunded: true, settled: true } : entry)); },
     settle(ticket) { action('claim', ticket); }, claimAll() { action('claimAll'); },
   };
@@ -246,6 +270,95 @@ export function useDodosGame() {
   await expect(page.locator(".draw-stats")).toContainText(
     "0.007200017 SOL entry",
   );
+  const vaultBalances = page.getByRole("definition");
+  await expect(vaultBalances).toHaveText([
+    "7.000890195 SOL",
+    "4.000000148 SOL",
+    "3.000000047 SOL",
+  ]);
+  await expect(page.locator(".prize-vault-balance")).toContainText(
+    "Winning payouts leave only when claimed, once per ticket.",
+  );
+  const purchasePanel = page.locator("#buy-ticket");
+  await purchasePanel
+    .getByRole("button", { name: "Number 7", exact: true })
+    .click();
+  await purchasePanel
+    .getByRole("button", { name: "Number 13", exact: true })
+    .click();
+  await expect(
+    purchasePanel.getByRole("button", { name: /Checking daily backing/ }),
+  ).toBeDisabled();
+  await page.evaluate(
+    (drawTime) => {
+      window.__setTestCapacity({
+        freeLamports: 17,
+        reservedLamports: 4_000_000_148,
+        vaultLamports: 4_000_890_165,
+      });
+      window.__setTestPurchaseQuote({
+        pooled: true,
+        numbers: [7, 13],
+        drawTime,
+        entryLamports: 6_250_011,
+        prizeLamports: 2_000_000_074,
+        reserveIncreaseLamports: 6_250_011,
+        requiredBackingLamports: 0,
+        freeLamports: 17,
+        canPurchase: true,
+        riskRentLamports: 24_540_491,
+        drawRentLamports: 2_984_581,
+        ticketRentLamports: 1_000_003,
+        accountRentLamports: 28_525_075,
+      });
+    },
+    now / 1000 + 18000,
+  );
+  await expect(
+    purchasePanel.getByRole("button", { name: "Buy ticket", exact: false }),
+  ).toBeEnabled();
+  await expect(page.locator(".purchase-pool-quote")).toContainText(
+    "0.028525075 SOL",
+  );
+  await expect(page.locator(".purchase-pool-quote")).toContainText(
+    "0.024540491 SOL rent, included above",
+  );
+  await expect(page.locator(".purchase-pool-quote dd")).toHaveText([
+    "0 SOL",
+    "0.028525075 SOL",
+  ]);
+  await purchasePanel
+    .getByRole("button", { name: "Number 13, pick 2", exact: true })
+    .click();
+  await purchasePanel
+    .getByRole("button", { name: "Number 14", exact: true })
+    .click();
+  await expect(
+    purchasePanel.getByRole("button", { name: /Checking daily backing/ }),
+  ).toBeDisabled();
+  await expect(page.locator(".purchase-pool-quote dd")).toHaveCount(0);
+  await page.selectOption("#draw-mode", String(now / 1000 + 32400));
+  await expect(
+    purchasePanel.getByRole("button", { name: /Checking daily backing/ }),
+  ).toBeDisabled();
+  await page.evaluate(() => window.__setTestLiabilityAvailable(false));
+  await expect(
+    purchasePanel.getByRole("button", { name: /Daily backing unavailable/ }),
+  ).toBeDisabled();
+  await expect(page.locator("#referrals")).toHaveCount(0);
+  await page.evaluate(() => {
+    window.__setTestLiabilityAvailable(true);
+    window.__setTestCapacity({
+      freeLamports: 3_000_000_047,
+      reservedLamports: 4_000_000_148,
+      vaultLamports: 7_000_890_195,
+    });
+    window.__setTestPurchaseQuote(null);
+  });
+  await purchasePanel
+    .getByRole("button", { name: "Clear", exact: true })
+    .click();
+  await page.selectOption("#draw-mode", String(now / 1000 + 18000));
   await page.getByRole("link", { name: "Your tickets", exact: true }).click();
   const card = (id) =>
     page.locator(".ticket-card").filter({
@@ -253,6 +366,28 @@ export function useDodosGame() {
         `a[href^="https://explorer.solana.com/address/${tickets[Number(id) - 1].address}"]`,
       ),
     });
+  const drawAction = (id) =>
+    page.locator(
+      `.bulk-reveal-draw[data-draw-key="${tickets[Number(id) - 1].sourceProgram}:${tickets[Number(id) - 1].drawTime}"]`,
+    );
+  await expect(page.locator(".bulk-reveal-panel")).toContainText(
+    "5 tickets · 3 unique draws",
+  );
+  await expect(
+    drawAction("3").getByText("3 tickets", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    drawAction("3").getByRole("button", {
+      name: "Review reveal costs",
+      exact: true,
+    }),
+  ).toHaveCount(1);
+  await expect(
+    card("8").getByRole("button", { name: "Review reveal costs", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /^Reveal \/ complete all/ }),
+  ).toBeDisabled();
   await expect(
     card("1").getByText("Oracle pending", { exact: true }),
   ).toBeVisible();
@@ -260,7 +395,7 @@ export function useDodosGame() {
     card("1").getByRole("button", { name: "Reveal result", exact: true }),
   ).toHaveCount(0);
   await expect(
-    card("2").getByRole("button", { name: "Complete draw", exact: true }),
+    drawAction("2").getByRole("button", { name: "Complete draw", exact: true }),
   ).toBeEnabled();
   await expect(
     card("4").getByRole("button", { name: "Refund entry", exact: true }),
@@ -274,28 +409,42 @@ export function useDodosGame() {
   await expect(
     card("1").getByRole("button", { name: "Refund entry", exact: true }),
   ).toHaveCount(0);
-  await card("3")
-    .getByRole("button", { name: "Review reveal costs", exact: true })
+  await page
+    .getByRole("button", { name: "Review all reveal costs", exact: true })
     .click();
-  await expect(card("3").locator(".oracle-cost-quote")).toContainText(
+  await expect(drawAction("3").locator(".oracle-cost-quote")).toContainText(
     "0.008190912 SOL",
   );
   assert.deepEqual(await page.evaluate(() => window.__oracleUiActions), [
-    "quote:3",
+    "quoteAll",
   ]);
-  await card("3")
+  await expect(page.locator(".bulk-reveal-totals")).toContainText(
+    "New reveal funding: 0.008190912 SOL across 1 draw",
+  );
+  await expect(
+    page.getByRole("button", { name: /^Reveal \/ complete all/ }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: /^Reveal \/ complete all/ }).click();
+  assert.deepEqual(await page.evaluate(() => window.__oracleUiActions), [
+    "quoteAll",
+    "publishAll",
+  ]);
+  await drawAction("3")
     .getByRole("button", { name: "Reveal result", exact: true })
     .click();
   await expect(
     card("3").getByText("Oracle pending", { exact: true }),
   ).toBeVisible();
-  await card("3")
+  await expect(
+    card("8").getByText("Oracle pending", { exact: true }),
+  ).toBeVisible();
+  await drawAction("3")
     .getByRole("button", { name: "Check oracle status", exact: true })
     .click();
   await expect(
-    card("3").getByRole("button", { name: "Complete draw", exact: true }),
+    drawAction("3").getByRole("button", { name: "Complete draw", exact: true }),
   ).toBeVisible();
-  await card("3")
+  await drawAction("3")
     .getByRole("button", { name: "Complete draw", exact: true })
     .click();
   await card("4")
@@ -316,11 +465,14 @@ export function useDodosGame() {
     card("5").getByRole("button", { name: "Claim prize", exact: true }),
   ).toBeEnabled();
   await page.evaluate(() => window.__setTestMetadataAvailable(false));
+  await expect(page.locator(".prize-vault-balance")).toHaveCount(0);
   await expect(page.locator("#referrals")).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: "Referrals", exact: true }),
   ).toHaveCount(0);
-  await expect(page.locator("#your-tickets .count-badge")).toHaveText("7");
+  await expect(page.locator("#your-tickets > summary .count-badge")).toHaveText(
+    "9",
+  );
   await expect(page.locator("#draw-results .count-badge")).toHaveText("2");
   await expect(
     card("3").getByRole("button", { name: "Claim prize", exact: true }),
@@ -371,8 +523,32 @@ export function useDodosGame() {
     }),
   ).toBeVisible();
   await expect(guide.getByText(/Results are fixed, not random/)).toHaveCount(0);
+  await guide
+    .getByText("Prizes, fees and blockchain history", { exact: true })
+    .click();
+  await expect(
+    guide.getByText(/Daily tickets in the same draw share backing/),
+  ).toBeVisible();
+  await expect(
+    guide.getByText(/Quick draws remain independently backed/),
+  ).toBeVisible();
+  await expect(
+    guide.getByText(/first pooled daily entry additionally creates/),
+  ).toBeVisible();
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1100 });
+    assert.equal(
+      await page.locator(".ticket-history .history-link > svg").evaluateAll(
+        (icons) =>
+          icons.length > 0 &&
+          icons.every((icon) => {
+            const bounds = icon.getBoundingClientRect();
+            return bounds.width === 13 && bounds.height === 13;
+          }),
+      ),
+      true,
+      `Ticket history icons must stay visible at ${width}px`,
+    );
     assert.equal(
       await page.evaluate(
         () => document.documentElement.scrollWidth > innerWidth + 1,
@@ -388,6 +564,7 @@ export function useDodosGame() {
       vaultLamports: 4_000_890_148,
     }),
   );
+  await page.selectOption("#draw-mode", "quick");
   await expect(
     page.getByRole("button", { name: /Prize reserves full/ }),
   ).toBeDisabled();
@@ -397,7 +574,8 @@ export function useDodosGame() {
     ),
   ).toBeVisible();
   assert.deepEqual(await page.evaluate(() => window.__oracleUiActions), [
-    "quote:3",
+    "quoteAll",
+    "publishAll",
     "reveal:3",
     "refresh",
     "complete:3",
@@ -424,6 +602,8 @@ export function useDodosGame() {
     JSON.stringify({
       simulatedRenderOnly: true,
       oracleStateActions: true,
+      sharedDailyDrawAction: true,
+      revealCostsCountUniqueDraws: true,
       explicitQuoteBeforeReveal: true,
       verifiedMetadataGate: true,
       refundedNotLoss: true,
@@ -432,6 +612,9 @@ export function useDodosGame() {
       actualProofLinks: true,
       liveMetadataPrices: true,
       reserveCapacityExplained: true,
+      pooledDailySelectionQuote: true,
+      actualFirstDrawAccountRent: true,
+      stalePairAndDrawQuotesRejected: true,
       widths: [320, 390, 768, 1440],
       pageErrors: errors,
     }),

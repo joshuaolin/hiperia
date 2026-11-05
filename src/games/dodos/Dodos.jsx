@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import DodosTickets from "../../components/DodosTickets.jsx";
 import DrawResults from "../../components/DrawResults.jsx";
 import DodosGuide from "../../components/DodosGuide";
+import PrizeVaultBalance from "../../components/PrizeVaultBalance.jsx";
 import ReferralDashboard from "../../components/ReferralDashboard.jsx";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useDodosGame } from "./useDodosGame.js";
@@ -12,6 +13,8 @@ import {
   getNextDrawTime,
 } from "../../lib/onchain/time.js";
 import { NUMBER_OPTIONS } from "../../lib/onchain/rules.js";
+import { isPublicVrfBuild } from "../../lib/buildProfile.js";
+import { matchesPurchaseQuote } from "./purchaseQuote.js";
 import "./dodos.css";
 
 function NumberPair({ numbers, placeholder = false }) {
@@ -59,9 +62,7 @@ export default function Dodos() {
     game.config?.randomnessVerified === true;
   const awaitingRandomness =
     game.config?.rulesRevision === 6 && !verifiedRandomness;
-  const publicBuild =
-    import.meta.env.VITE_APP_ENV === "uat" &&
-    import.meta.env.VITE_GAME_VERSION === "vrf";
+  const publicBuild = isPublicVrfBuild();
   const referralsVisible =
     !publicBuild &&
     game.publicGame !== true &&
@@ -108,13 +109,27 @@ export default function Dodos() {
     : game.quickDraw
       ? game.config?.quickTicketCostLamports
       : game.config?.dailyTicketCostLamports;
-  const prizeBacked = hasPrizeBacking(
-    capacity,
-    selectedEntryLamports,
-    game.quickDraw
-      ? game.config?.quickPayoutLamports
-      : game.config?.dailyPayoutLamports,
-  );
+  const pooledDaily = game.publicGame === true && !game.quickDraw;
+  const pooledMetadata = game.config?.liabilityRules?.dailyPooled === true;
+  const purchaseQuote =
+    pooledDaily &&
+    matchesPurchaseQuote(
+      game.purchaseQuote,
+      game.selectedNumbers,
+      Number(game.drawChoice),
+      game.config,
+    )
+      ? game.purchaseQuote
+      : null;
+  const prizeBacked = pooledDaily
+    ? (purchaseQuote?.canPurchase ?? null)
+    : hasPrizeBacking(
+        capacity,
+        selectedEntryLamports,
+        game.quickDraw
+          ? game.config?.quickPayoutLamports
+          : game.config?.dailyPayoutLamports,
+      );
   const reserveFull = prizeBacked === false;
   const currentSeconds = Math.floor(game.now / 1000);
   const nextDaily = getNextDrawTime(game.now);
@@ -136,6 +151,7 @@ export default function Dodos() {
     game.canSign &&
     game.networkAllowed &&
     !reserveFull &&
+    (!pooledDaily || Boolean(purchaseQuote)) &&
     (game.config?.rulesRevision !== 6 || verifiedRandomness) &&
     cost !== null &&
     payout !== null;
@@ -351,16 +367,80 @@ export default function Dodos() {
             <p className="draw-rules">
               {game.quickDraw
                 ? `The quick draw starts about 60 seconds after you press Buy; approve before it starts. An exact match pays ${quickPayout ?? "—"} SOL. Daily draws have their own entry price and prize.`
-                : `This ticket covers only the selected date and time. ${dailySchedule ? `Daily draws: ${dailySchedule}, UTC+8.` : "Awaiting the on-chain daily schedule."} Multiple tickets for the same draw are allowed while enough prize reserves are available. Buy before the selected draw starts.`}
+                : `This ticket covers only the selected date and time. ${dailySchedule ? `Daily draws: ${dailySchedule}, UTC+8.` : "Awaiting the on-chain daily schedule."} ${pooledDaily ? "Tickets in the same daily draw share backing across different ordered pairs. Repeating a pair increases its possible payout and may need more backing." : "Multiple tickets for the same draw are allowed while enough prize reserves are available."} Buy before the selected draw starts.`}
             </p>
-            {capacity && (
-              <p
-                className={reserveFull ? "draw-expired" : "draw-rules"}
-                role="status"
+            <PrizeVaultBalance capacity={capacity} />
+            {pooledDaily && (
+              <div
+                className="purchase-pool-quote"
+                aria-label="Daily entry backing quote"
               >
-                {reserveFull
-                  ? "Prize reserves are full for this entry. Multiple tickets per draw are allowed; this pause protects every accepted prize. Refresh after reserves are released or funded."
-                  : `Unreserved prize funds: ${solFromLamports(capacity.freeLamports) ?? "Unavailable"} SOL. Each accepted ticket keeps its full prize backing.`}
+                <p className="draw-rules">
+                  {purchaseQuote
+                    ? `Backing checked for ${game.selectedNumbers.map((number) => String(number).padStart(2, "0")).join(" → ")}, ${formatDrawTime(purchaseQuote.drawTime)} UTC+8.`
+                    : !pooledMetadata
+                      ? "Daily backing metadata is unavailable. Daily purchases are paused until the on-chain rules can be verified."
+                      : game.purchaseQuoteError
+                        ? game.purchaseQuoteError
+                        : game.selectedNumbers.length !== 2
+                          ? "Choose two numbers to check this combination's backing and wallet account rent."
+                          : "Checking this combination's backing and account rent from Devnet…"}
+                </p>
+                {purchaseQuote && (
+                  <>
+                    <dl>
+                      <div>
+                        <dt>Additional vault backing</dt>
+                        <dd>
+                          {solFromLamports(
+                            purchaseQuote.requiredBackingLamports,
+                          )}{" "}
+                          SOL
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Wallet account rent</dt>
+                        <dd>
+                          {solFromLamports(purchaseQuote.accountRentLamports)}{" "}
+                          SOL
+                        </dd>
+                      </div>
+                    </dl>
+                    <p className="draw-rules">
+                      {purchaseQuote.riskRentLamports > 0
+                        ? `This draw's first pooled entry creates its shared combination account: ${solFromLamports(purchaseQuote.riskRentLamports)} SOL rent, included above. `
+                        : "The shared combination account already exists; no new shared-account rent is charged. "}
+                      Your wallet pays the entry, quoted account rent and
+                      network fee. Additional backing stays inside the vault; no
+                      prize is paid at purchase. The contract rechecks capacity
+                      before accepting the ticket.
+                    </p>
+                  </>
+                )}
+                {pooledMetadata && game.selectedNumbers.length === 2 && (
+                  <button
+                    className="button button-ghost"
+                    onClick={game.refreshPurchaseQuote}
+                    disabled={
+                      game.pending ||
+                      game.isLoading ||
+                      game.purchaseQuoteLoading ||
+                      game.purchaseQuoteCooldown > 0 ||
+                      typeof game.refreshPurchaseQuote !== "function"
+                    }
+                  >
+                    {game.purchaseQuoteCooldown > 0
+                      ? `Refresh quote in ${game.purchaseQuoteCooldown}s`
+                      : "Refresh backing quote"}
+                  </button>
+                )}
+              </div>
+            )}
+            {reserveFull && (
+              <p className="draw-expired" role="status">
+                {pooledDaily
+                  ? "This combination needs more backing for another possible winning payout. Different pairs in this daily draw can share backing. Existing prizes stay protected; no reward has left the vault."
+                  : "Prize reserves are full for this entry. Multiple tickets per draw are allowed; this pause protects every accepted prize. Refresh after reserves are released or funded."}
               </p>
             )}
             {game.drawExpired && (
@@ -423,15 +503,25 @@ export default function Dodos() {
                             ? "Randomness verification required"
                             : !game.authorized
                               ? "Approved UAT wallet required"
-                              : reserveFull
-                                ? "Prize reserves full"
-                                : game.drawExpired
-                                  ? "Choose an upcoming draw"
-                                  : cost === null || payout === null
-                                    ? "Awaiting draw pricing"
-                                    : game.pendingPurchase
-                                      ? "Check / retry purchase"
-                                      : "Buy ticket"}
+                              : pooledDaily && !pooledMetadata
+                                ? "Daily backing unavailable"
+                                : reserveFull
+                                  ? pooledDaily
+                                    ? "Combination backing full"
+                                    : "Prize reserves full"
+                                  : game.drawExpired
+                                    ? "Choose an upcoming draw"
+                                    : cost === null || payout === null
+                                      ? "Awaiting draw pricing"
+                                      : pooledDaily && !purchaseQuote
+                                        ? game.selectedNumbers.length !== 2
+                                          ? "Choose two numbers"
+                                          : game.purchaseQuoteError
+                                            ? "Refresh daily backing"
+                                            : "Checking daily backing…"
+                                        : game.pendingPurchase
+                                          ? "Check / retry purchase"
+                                          : "Buy ticket"}
               <span aria-hidden="true">↗</span>
             </button>
             <p className="purchase-caption">

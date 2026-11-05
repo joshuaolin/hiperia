@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import "../styles/back-to-top.css";
 
-export default function BackToTop() {
+export default function BackToTop({ navigationOpen = false }) {
   const { visible: walletModalVisible } = useWalletModal();
   const [visible, setVisible] = useState(false);
 
@@ -45,13 +45,14 @@ export default function BackToTop() {
     });
   }
 
-  if (!visible || walletModalVisible) return null;
+  if (!visible || walletModalVisible || navigationOpen) return null;
 
   return (
     <button
       type="button"
       className="back-to-top"
       aria-label="Back to top"
+      title="Back to top"
       onClick={returnToTop}
     >
       <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -63,7 +64,6 @@ export default function BackToTop() {
           strokeLinejoin="round"
         />
       </svg>
-      <span>Back to top</span>
     </button>
   );
 }

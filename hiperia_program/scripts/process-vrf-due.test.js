@@ -8,6 +8,7 @@ import {
   Keypair,
   PublicKey,
   SystemProgram,
+  TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
@@ -35,9 +36,9 @@ const quote = {
   oracleProgram: "oracle",
 };
 
-function account(nonce, numbers = [22, 2], drawTime = 100) {
+function account(nonce, numbers = [22, 2], drawTime = 100, reserveVersion = 2) {
   const padding = Buffer.alloc(32);
-  padding[0] = 2;
+  padding[0] = reserveVersion;
   padding.writeBigUInt64LE(2_000_000_000n, 1);
   return {
     user: owner.publicKey,
@@ -402,4 +403,151 @@ test("operator connection cannot send in dry-run or on a non-Devnet genesis", as
     wrongNetwork.sendRawTransaction(Buffer.alloc(1), { maxRetries: 0 }),
   );
   assert.equal(prepared, false);
+});
+
+test("pooled ticket scans preserve their v3 settlement route and immutable prize", () => {
+  const pooled = ticketRecord(record(account(1, [2, 22], 100, 3)));
+  assert.equal(pooled.reserveVersion, 3);
+  assert.equal(pooled.pooled, true);
+  assert.equal(pooled.payoutLamports, "2000000000");
+  assert.equal(pooled.user, owner.publicKey.toBase58());
+  const invalid = account(2, [2, 22], 100, 4);
+  assert.throws(() => ticketRecord(record(invalid)), /snapshot/);
+});
+
+test("pooled dry-run reports the actual aggregate reserve rather than summed prizes", async () => {
+  const fixture = setup({
+    records: [
+      account(1),
+      account(2, [22, 2], 100, 3),
+      account(3, [2, 22], 100, 3),
+    ],
+  });
+  fixture.client.drawRisk = {
+    read: async () => ({ phase: 0, reservedLamports: new BN(2_006_250_000) }),
+  };
+  const summary = await processDraws(fixture.input);
+  assert.deepEqual(fixture.calls, []);
+  assert.equal(fixture.logs[0].unsettledLiabilityLamports, "4006250000");
+  assert.equal(fixture.logs[0].legacyFullPrizeLiabilityLamports, "2000000000");
+  assert.equal(fixture.logs[0].pooledReservedLiabilityLamports, "2006250000");
+  assert.equal(fixture.logs[0].pooledUnsettledTickets, 2);
+  assert.equal(fixture.logs[0].pooledReconciliationRequired, true);
+  assert.equal(summary.reconciledDraws, 0);
+  assert.equal(summary.preservedWins, 1);
+});
+
+function pooledOperatorFixture({
+  records = [account(1, [2, 22], 100, 3)],
+  phase = 0,
+} = {}) {
+  const fixture = setup({
+    records,
+    args: ["--execute", "--wallet", "explicit.json"],
+  });
+  const risk = { phase, reservedLamports: new BN(2_000_000_000) };
+  fixture.client.drawRisk = { read: async () => ({ ...risk }) };
+  fixture.client.reconcileDrawRiskInstruction = async (drawTime) => {
+    assert.equal(drawTime, 100);
+    return new TransactionInstruction({
+      programId,
+      keys: [],
+      data: Buffer.from([1]),
+    });
+  };
+  fixture.client.program.provider = {
+    sendAndConfirm: async (transaction, signers, options) => {
+      assert.equal(transaction.instructions.length, 1);
+      assert.deepEqual(signers, []);
+      assert.equal(options.maxRetries, 0);
+      assert.equal(options.commitment, "confirmed");
+      assert.equal(
+        fixture.input.receipt.context.kind,
+        "reconcile-pooled-backing",
+      );
+      fixture.calls.push("reconcile");
+      risk.phase = 1;
+      return "confirmed-reconciliation";
+    },
+  };
+  return fixture;
+}
+
+test("one explicit operator transaction reconciles a finalized pooled draw with winners only", async () => {
+  const fixture = pooledOperatorFixture();
+  const summary = await processDraws(fixture.input);
+  assert.deepEqual(fixture.calls, ["reconcile"]);
+  assert.equal(summary.reconciledDraws, 1);
+  assert.equal(summary.preservedWins, 1);
+  assert.equal(summary.settledLosses, 0);
+  assert.equal(fixture.logs[1].pooledBackingReconciled, true);
+  assert.equal(fixture.logs[1].signature, "confirmed-reconciliation");
+});
+
+test("pooled losing cleanup uses v3 instructions after a confirmed reconciliation", async () => {
+  const fixture = pooledOperatorFixture({
+    records: [account(1, [22, 2], 100, 3), account(2, [2, 22], 100, 3)],
+  });
+  fixture.client.settleBatch = async (tickets) => {
+    assert.deepEqual(
+      tickets.map((ticket) => ticket.reserveVersion),
+      [3],
+    );
+    fixture.calls.push({ settle: tickets.map((ticket) => ticket.id) });
+    return { settled: tickets.length, signatures: ["confirmed-loss"] };
+  };
+  const summary = await processDraws(fixture.input);
+  assert.deepEqual(fixture.calls, ["reconcile", { settle: ["1"] }]);
+  assert.equal(summary.settledLosses, 1);
+  assert.equal(summary.preservedWins, 1);
+});
+
+test("already reconciled pooled backing never adds a standalone transaction", async () => {
+  const fixture = pooledOperatorFixture({ phase: 1 });
+  const summary = await processDraws(fixture.input);
+  assert.deepEqual(fixture.calls, []);
+  assert.equal(summary.reconciledDraws, 0);
+  assert.equal(summary.preservedWins, 1);
+});
+
+test("unavailable pooled backing reports unknown liability without inventing a total", async () => {
+  const fixture = pooledOperatorFixture();
+  fixture.client.drawRisk.read = async () => {
+    throw new Error("RPC unavailable");
+  };
+  const summary = await processDraws(fixture.input);
+  assert.equal(fixture.logs[0].unsettledLiabilityLamports, null);
+  assert.equal(fixture.logs[0].pooledReservedLiabilityLamports, null);
+  assert.equal(fixture.logs[0].pooledBackingStatus, "unavailable");
+  assert.equal(fixture.logs[0].pooledUnsettledTickets, 1);
+  assert.equal(summary.reconciledDraws, 0);
+  assert.deepEqual(fixture.calls, []);
+  assert.match(
+    fixture.logs[1].pooledReconciliationSkipped,
+    /no standalone transaction/,
+  );
+});
+
+test("an uncertain pooled reconciliation stops before all later writes without resubmission", async () => {
+  const fixture = pooledOperatorFixture({
+    records: [account(1, [22, 2], 100, 3)],
+  });
+  fixture.client.program.provider.sendAndConfirm = async () => {
+    fixture.calls.push("uncertain-reconcile");
+    throw new Error("Reconciliation confirmation is uncertain.");
+  };
+  await assert.rejects(processDraws(fixture.input), /uncertain/);
+  assert.deepEqual(fixture.calls, ["uncertain-reconcile"]);
+});
+
+test("the transaction bound also blocks a dedicated pooled reconciliation", async () => {
+  const fixture = pooledOperatorFixture();
+  let checks = 0;
+  fixture.input.receipt.assertWritable = () => {
+    checks += 1;
+    throw new Error("The transaction limit was reached.");
+  };
+  await assert.rejects(processDraws(fixture.input), /transaction limit/);
+  assert.equal(checks, 1);
+  assert.deepEqual(fixture.calls, []);
 });

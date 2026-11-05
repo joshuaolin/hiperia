@@ -135,8 +135,8 @@
 
 @media (max-width: 850px) {
   .header {
-    min-height: 70px;
-    padding: 14px 22px;
+    min-height: 60px;
+    padding: 10px 22px;
   }
 }
 
@@ -155,7 +155,7 @@
 
 @media (max-width: 480px) {
   .header {
-    padding: 14px 16px;
+    padding: 10px 16px;
   }
   .header-breadcrumb {
     display: none;

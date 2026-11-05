@@ -6,12 +6,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-width: 46px;
-  min-height: 46px;
-  padding: 12px 15px;
+  width: 44px;
+  height: 44px;
+  padding: 11px;
   border: 1px solid var(--accent-border);
-  border-radius: 24px;
+  border-radius: 50%;
   background: var(--accent-surface);
   color: var(--mint);
   box-shadow: 0 6px 20px #0006;
@@ -28,12 +27,7 @@
 }
 @media (max-width: 700px) {
   .back-to-top {
-    right: max(16px, env(safe-area-inset-right));
-    bottom: max(16px, env(safe-area-inset-bottom));
-    width: 46px;
-    padding: 12px;
-  }
-  .back-to-top > span {
-    display: none;
+    right: calc(12px + env(safe-area-inset-right));
+    bottom: calc(12px + env(safe-area-inset-bottom));
   }
 }

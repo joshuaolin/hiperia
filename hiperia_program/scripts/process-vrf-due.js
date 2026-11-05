@@ -14,7 +14,12 @@ import {
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { utils } from "@coral-xyz/anchor";
-import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
+import {
+  Connection,
+  Keypair,
+  Transaction,
+  VersionedTransaction,
+} from "@solana/web3.js";
 import { VrfDodosClient } from "../../src/lib/onchain/VrfDodosClient.js";
 import { getDrawPda, getTicketPda } from "../../src/lib/onchain/pdas.js";
 import { VRF_PROGRAM_ID } from "../../src/lib/onchain/vrfProtocol.js";
@@ -101,7 +106,7 @@ export function ticketRecord(
   const padding = Buffer.from(account.padding);
   assert.ok(
     padding.length === 32 &&
-      padding[0] === 2 &&
+      [2, 3].includes(padding[0]) &&
       padding[9] <= 1 &&
       padding.subarray(10).every((byte) => byte === 0),
     "The ticket prize snapshot could not be verified.",
@@ -118,6 +123,8 @@ export function ticketRecord(
     numbers,
     settled: account.settled,
     refunded: padding[9] === 1,
+    reserveVersion: padding[0],
+    pooled: padding[0] === 3,
     payoutLamports: payoutLamports.toString(),
     paidLamports: account.paidLamports.toString(),
     sourceProgram: programId.toString(),
@@ -288,21 +295,55 @@ export async function processDraws({
   let approvedOracleLamports = 0;
   let settled = 0;
   let preservedWins = 0;
+  let reconciledDraws = 0;
   for (const selectedDraw of selected) {
     let draw = selectedDraw;
     const related = tickets.filter(
       (ticket) => ticket.drawTime === draw.drawTime,
     );
-    const liability = related.reduce(
+    const pooledTickets = related.filter(
+      (ticket) => ticket.reserveVersion === 3 && !ticket.settled,
+    );
+    const legacyLiability = related.reduce(
       (total, ticket) =>
-        total + (ticket.settled ? 0n : BigInt(ticket.payoutLamports)),
+        total +
+        (ticket.settled || ticket.reserveVersion === 3
+          ? 0n
+          : BigInt(ticket.payoutLamports)),
       0n,
     );
+    let risk = null;
+    let riskReadFailed = false;
+    if (pooledTickets.length) {
+      try {
+        risk = await client.drawRisk.read(draw.drawTime);
+      } catch {
+        riskReadFailed = true;
+      }
+    }
+    const pooledReserved = risk
+      ? BigInt(risk.reservedLamports.toString())
+      : null;
     log({
       drawTime: draw.drawTime,
       phase: draw.status,
       tickets: related.length,
-      unsettledLiabilityLamports: liability.toString(),
+      unsettledLiabilityLamports:
+        pooledTickets.length && pooledReserved === null
+          ? null
+          : (legacyLiability + (pooledReserved ?? 0n)).toString(),
+      legacyFullPrizeLiabilityLamports: legacyLiability.toString(),
+      pooledUnsettledTickets: pooledTickets.length,
+      pooledReservedLiabilityLamports: pooledReserved?.toString() ?? null,
+      pooledBackingStatus: pooledTickets.length
+        ? riskReadFailed
+          ? "unavailable"
+          : risk
+            ? "verified"
+            : "missing"
+        : "not-applicable",
+      pooledReconciliationRequired:
+        draw.status === "final" && risk?.phase === 0,
       mode: options.execute ? "execute" : "dry-run",
     });
     if (
@@ -397,6 +438,46 @@ export async function processDraws({
         continue;
       }
     }
+    if (pooledTickets.length) {
+      try {
+        risk = await client.drawRisk.read(draw.drawTime);
+      } catch {
+        risk = null;
+      }
+      if (risk?.phase === 0) {
+        receipt.context = {
+          kind: "reconcile-pooled-backing",
+          drawTime: draw.drawTime,
+        };
+        receipt.assertWritable();
+        const instruction = await client.reconcileDrawRiskInstruction(
+          draw.drawTime,
+        );
+        receipt.assertWritable();
+        const signature = await client.program.provider.sendAndConfirm(
+          new Transaction().add(instruction),
+          [],
+          {
+            commitment: "confirmed",
+            preflightCommitment: "confirmed",
+            maxRetries: 0,
+          },
+        );
+        receipt.assertResolved();
+        reconciledDraws += 1;
+        log({
+          drawTime: draw.drawTime,
+          pooledBackingReconciled: true,
+          signature,
+        });
+      } else if (!risk) {
+        log({
+          drawTime: draw.drawTime,
+          pooledReconciliationSkipped:
+            "backing account could not be verified; no standalone transaction was sent",
+        });
+      }
+    }
     const candidates = related.filter((ticket) => {
       const decision = settlementDecision(ticket, draw, chainTime);
       if (decision === "preserve-win") preservedWins++;
@@ -457,6 +538,7 @@ export async function processDraws({
     processedDraws: selected.length,
     settledLosses: settled,
     preservedWins,
+    reconciledDraws,
     approvedOracleLamports,
   };
 }

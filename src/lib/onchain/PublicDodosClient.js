@@ -2,6 +2,7 @@ import { DodosClient } from "./DodosClient.js";
 import { VrfDodosClient } from "./VrfDodosClient.js";
 import { PROGRAM_ID } from "./idl.js";
 import { VRF_PROGRAM_ID } from "./vrfProtocol.js";
+import { isPublicVrfBuild } from "../buildProfile.js";
 
 function annotate(entries, sourceProgram, legacy) {
   return entries.map((entry) => ({
@@ -42,6 +43,9 @@ export class PublicDodosClient {
   }
   getOracleQuote(drawTime) {
     return this.primary.getOracleQuote(drawTime);
+  }
+  getPurchaseQuote(numbers, options) {
+    return this.primary.getPurchaseQuote(numbers, options);
   }
   getPendingPurchase() {
     return this.primary.getPendingPurchase();
@@ -174,8 +178,7 @@ export function createDodosClient(
   options = {},
   environment = import.meta.env ?? {},
 ) {
-  return environment.VITE_APP_ENV === "uat" &&
-    environment.VITE_GAME_VERSION === "vrf"
+  return isPublicVrfBuild(environment)
     ? new PublicDodosClient(options)
     : new DodosClient(options);
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -9,6 +9,34 @@ export default function App() {
   const [activeSection, setActiveSection] = useState(() =>
     window.location.hash === "#support" ? "support" : "dodos",
   );
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const sidebar = useRef(null);
+  const navigationToggle = useRef(null);
+
+  useEffect(() => {
+    const mobileLayout = window.matchMedia("(max-width: 850px)");
+    const closeNavigation = () => setNavigationOpen(false);
+    mobileLayout.addEventListener("change", closeNavigation);
+    return () => mobileLayout.removeEventListener("change", closeNavigation);
+  }, []);
+
+  useEffect(() => {
+    if (!navigationOpen) return;
+    const closeOutside = (event) => {
+      if (!sidebar.current?.contains(event.target)) setNavigationOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key !== "Escape") return;
+      setNavigationOpen(false);
+      navigationToggle.current?.focus();
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [navigationOpen]);
 
   useEffect(() => {
     const updateSection = () => {
@@ -25,7 +53,14 @@ export default function App() {
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
-      <aside className="sidebar" aria-label="Main navigation">
+      <aside
+        ref={sidebar}
+        className={`sidebar${navigationOpen ? " sidebar-open" : ""}`}
+        aria-label="Main navigation"
+        onClick={(event) => {
+          if (event.target.closest("a")) setNavigationOpen(false);
+        }}
+      >
         <a className="brand" href="#dodos" aria-label="Hiperia home">
           <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
             <path
@@ -36,8 +71,34 @@ export default function App() {
           </svg>
           hiperia<span className="brand-period">.</span>
         </a>
+        <button
+          ref={navigationToggle}
+          type="button"
+          className="navigation-toggle"
+          aria-label={navigationOpen ? "Close navigation" : "Open navigation"}
+          aria-expanded={navigationOpen}
+          aria-controls="sidebar-navigation"
+          onClick={() => setNavigationOpen((open) => !open)}
+        >
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d={
+                navigationOpen
+                  ? "m6 6 12 12M18 6 6 18"
+                  : "M4 6h16M4 12h16M4 18h16"
+              }
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
         <div className="sidebar-section-label">PLAY</div>
-        <nav className="sidebar-nav">
+        <nav
+          id="sidebar-navigation"
+          className="sidebar-nav"
+          aria-label="Games and support"
+        >
           <a
             className={`nav-item${activeSection === "dodos" ? " nav-item-active" : ""}`}
             href="#dodos"
@@ -106,7 +167,7 @@ export default function App() {
         </main>
         <Footer />
       </div>
-      <BackToTop />
+      <BackToTop navigationOpen={navigationOpen} />
     </div>
   );
 }

@@ -46,6 +46,8 @@ export default function DodosGuide({
     Number.isSafeInteger(refundAfterSeconds) && refundAfterSeconds > 0
       ? refundAfterSeconds / 3600
       : null;
+  const pooledDaily =
+    randomnessVerified && rules?.liabilityRules?.dailyPooled === true;
   return (
     <section
       id="dodos-guide"
@@ -180,7 +182,12 @@ export default function DodosGuide({
                   <strong> Complete draw</strong> to record the numbers;
                   otherwise use Refresh and complete it later. The same
                   completion approval may also release losing tickets' reserved
-                  funds. No wallet action starts automatically.
+                  funds. For several entries, use{" "}
+                  <strong>Review all reveal costs</strong>, then{" "}
+                  <strong>Reveal / complete all</strong>. Costs and actions are
+                  grouped by draw: one daily reveal covers all its tickets. Each
+                  transaction still needs your approval, and cancelling stops
+                  the remaining draws. No wallet action starts automatically.
                 </>
               ) : (
                 <>
@@ -217,11 +224,19 @@ export default function DodosGuide({
             Older tickets may have a different prize.
           </p>
           <p>
-            Each entry reserves its full prize. Daily and quick tickets use
-            different prize amounts, so the same vault can back different
-            numbers of entries. Settling losing tickets releases their reserved
-            funds. A winning prize stays reserved until it is paid to its ticket
-            owner.
+            Buying a ticket adds its entry payment to the prize vault. It does
+            not pay out a reward. A winning payout leaves only when claimed,
+            once per ticket, to its recorded wallet owner.
+            {pooledDaily
+              ? " Daily tickets in the same draw share backing across different ordered pairs. The contract covers the highest possible matching payout plus possible entry refunds. More tickets on the same pair still need enough backing for all of their accepted prizes. The price and prize stay fixed for each accepted ticket."
+              : publicGame && randomnessVerified
+                ? " Daily purchases wait for verified shared-backing rules. Existing ticket prizes stay protected."
+                : " Each entry reserves its full prize inside the same vault."}
+            {pooledDaily || (publicGame && randomnessVerified)
+              ? " Quick draws remain independently backed by their full prizes, so their capacity is still finite."
+              : " Daily and quick tickets use different prize amounts, so the same vault can back different numbers of entries."}{" "}
+            Releasing losing backing does not move SOL out of the vault. A
+            winning prize stays backed until it is paid to its ticket owner.
             {randomnessVerified &&
               " Completing a draw can release a batch of losing reserves in the same approval. The operator can process remaining losses separately. A ticket appearing in Done does not by itself release its reserve."}
           </p>
@@ -229,7 +244,7 @@ export default function DodosGuide({
             Every purchase also pays a network fee and ticket account rent.
             Those costs are separate from the entry price.
             {randomnessVerified
-              ? " The first entry in a draw also pays rent for its shared draw account. Revealing a draw pays the current oracle fee and request account rent from the requesting wallet. The cost review reads these amounts from Devnet before you approve. Completing the draw can need a second approval and network fee."
+              ? ` The first entry in a draw also pays rent for its shared draw account.${pooledDaily ? " The first pooled daily entry additionally creates the shared combination account; Buy a ticket shows its current account rent quote before approval." : ""} Revealing a draw pays the current oracle fee and request account rent from the requesting wallet. The cost review reads these amounts from Devnet before you approve. Completing the draw can need a second approval and network fee.`
               : " A quick draw has its own result account, so recording each quick result also costs account rent."}
           </p>
           <p>
@@ -241,9 +256,11 @@ export default function DodosGuide({
               : "the contract's ordered-pair"}{" "}
             odds. The larger daily prize does not improve those odds or
             guarantee a win or profit.
-            {!randomnessVerified && !publicGame &&
+            {!randomnessVerified &&
+              !publicGame &&
               " UAT uses a fixed test result, so those random-draw odds do not apply during testing."}
-            {!randomnessVerified && publicGame &&
+            {!randomnessVerified &&
+              publicGame &&
               " Wait for verified on-chain randomness rules before entering a draw."}
           </p>
           <p>

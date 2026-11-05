@@ -65,6 +65,12 @@ export const getDrawPda = (drawTime, programId = VRF_PROGRAM_ID) =>
     new PublicKey(programId),
   );
 
+export const getDrawRiskPda = (drawTime, programId = VRF_PROGRAM_ID) =>
+  PublicKey.findProgramAddressSync(
+    [Buffer.from("draw-risk"), Buffer.from("v1"), i64LeBytes(drawTime)],
+    new PublicKey(programId),
+  );
+
 export const getOracleClientPda = (drawTime, programId = VRF_PROGRAM_ID) =>
   PublicKey.findProgramAddressSync(
     [Buffer.from("oracle-client"), i64LeBytes(drawTime)],

@@ -8,7 +8,16 @@
   "instructions": [
     {
       "name": "initialize",
-      "discriminator": [175, 175, 109, 31, 13, 152, 155, 237],
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
       "accounts": [
         {
           "name": "config",
@@ -41,7 +50,16 @@
     },
     {
       "name": "get_rules",
-      "discriminator": [100, 26, 69, 246, 115, 199, 97, 78],
+      "discriminator": [
+        100,
+        26,
+        69,
+        246,
+        115,
+        199,
+        97,
+        78
+      ],
       "accounts": [
         {
           "name": "config"
@@ -56,7 +74,16 @@
     },
     {
       "name": "get_access_rules",
-      "discriminator": [139, 62, 58, 237, 53, 163, 247, 56],
+      "discriminator": [
+        139,
+        62,
+        58,
+        237,
+        53,
+        163,
+        247,
+        56
+      ],
       "accounts": [
         {
           "name": "config"
@@ -71,7 +98,16 @@
     },
     {
       "name": "get_randomness_rules",
-      "discriminator": [246, 220, 23, 94, 22, 43, 115, 209],
+      "discriminator": [
+        246,
+        220,
+        23,
+        94,
+        22,
+        43,
+        115,
+        209
+      ],
       "accounts": [
         {
           "name": "config"
@@ -85,8 +121,259 @@
       }
     },
     {
+      "name": "get_liability_rules",
+      "discriminator": [
+        36,
+        161,
+        3,
+        134,
+        101,
+        31,
+        105,
+        194
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        }
+      ],
+      "args": [],
+      "returns": {
+        "defined": {
+          "name": "LiabilityRules"
+        }
+      }
+    },
+    {
+      "name": "buy_pooled_ticket",
+      "discriminator": [
+        202,
+        107,
+        227,
+        219,
+        8,
+        93,
+        48,
+        153
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "ticket",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "draw",
+          "writable": true
+        },
+        {
+          "name": "draw_risk",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "ticket_nonce",
+          "type": "u64"
+        },
+        {
+          "name": "draw_time",
+          "type": "i64"
+        },
+        {
+          "name": "numbers",
+          "type": {
+            "array": [
+              "u8",
+              2
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "reconcile_draw_risk",
+      "discriminator": [
+        55,
+        85,
+        182,
+        189,
+        217,
+        145,
+        115,
+        134
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "draw"
+        },
+        {
+          "name": "draw_risk",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "draw_time",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "settle_pooled_ticket",
+      "discriminator": [
+        163,
+        32,
+        205,
+        218,
+        222,
+        68,
+        194,
+        17
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "ticket",
+          "writable": true
+        },
+        {
+          "name": "draw"
+        },
+        {
+          "name": "draw_risk",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "release_pooled_losing_ticket",
+      "discriminator": [
+        99,
+        204,
+        84,
+        163,
+        51,
+        54,
+        157,
+        12
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "ticket",
+          "writable": true
+        },
+        {
+          "name": "draw"
+        },
+        {
+          "name": "draw_risk",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "refund_pooled_ticket",
+      "discriminator": [
+        180,
+        27,
+        101,
+        161,
+        60,
+        158,
+        196,
+        5
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "ticket",
+          "writable": true
+        },
+        {
+          "name": "draw"
+        },
+        {
+          "name": "draw_risk",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "writable": true
+        },
+        {
+          "name": "oracle_request"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "buy_ticket",
-      "discriminator": [11, 24, 17, 193, 168, 116, 164, 169],
+      "discriminator": [
+        11,
+        24,
+        17,
+        193,
+        168,
+        116,
+        164,
+        169
+      ],
       "accounts": [
         {
           "name": "config"
@@ -125,14 +412,26 @@
         {
           "name": "numbers",
           "type": {
-            "array": ["u8", 2]
+            "array": [
+              "u8",
+              2
+            ]
           }
         }
       ]
     },
     {
       "name": "request_draw",
-      "discriminator": [22, 180, 8, 81, 47, 21, 86, 159],
+      "discriminator": [
+        22,
+        180,
+        8,
+        81,
+        47,
+        21,
+        86,
+        159
+      ],
       "accounts": [
         {
           "name": "config"
@@ -178,7 +477,10 @@
         {
           "name": "nonce",
           "type": {
-            "array": ["u8", 32]
+            "array": [
+              "u8",
+              32
+            ]
           }
         },
         {
@@ -189,7 +491,16 @@
     },
     {
       "name": "finalize_draw",
-      "discriminator": [112, 9, 234, 94, 99, 176, 12, 181],
+      "discriminator": [
+        112,
+        9,
+        234,
+        94,
+        99,
+        176,
+        12,
+        181
+      ],
       "accounts": [
         {
           "name": "config"
@@ -211,7 +522,16 @@
     },
     {
       "name": "reclaim_oracle_funding",
-      "discriminator": [18, 32, 207, 96, 154, 107, 177, 14],
+      "discriminator": [
+        18,
+        32,
+        207,
+        96,
+        154,
+        107,
+        177,
+        14
+      ],
       "accounts": [
         {
           "name": "config"
@@ -241,7 +561,16 @@
     },
     {
       "name": "release_losing_ticket",
-      "discriminator": [101, 29, 194, 193, 175, 29, 100, 36],
+      "discriminator": [
+        101,
+        29,
+        194,
+        193,
+        175,
+        29,
+        100,
+        36
+      ],
       "accounts": [
         {
           "name": "config"
@@ -262,7 +591,16 @@
     },
     {
       "name": "settle_ticket",
-      "discriminator": [201, 80, 119, 145, 208, 184, 168, 70],
+      "discriminator": [
+        201,
+        80,
+        119,
+        145,
+        208,
+        184,
+        168,
+        70
+      ],
       "accounts": [
         {
           "name": "config"
@@ -291,7 +629,16 @@
     },
     {
       "name": "refund_ticket",
-      "discriminator": [178, 97, 75, 218, 227, 28, 21, 73],
+      "discriminator": [
+        178,
+        97,
+        75,
+        218,
+        227,
+        28,
+        21,
+        73
+      ],
       "accounts": [
         {
           "name": "config"
@@ -325,41 +672,148 @@
   "accounts": [
     {
       "name": "Config",
-      "discriminator": [155, 12, 170, 224, 30, 250, 204, 130]
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
     },
     {
       "name": "Vault",
-      "discriminator": [211, 8, 232, 43, 2, 152, 117, 119]
+      "discriminator": [
+        211,
+        8,
+        232,
+        43,
+        2,
+        152,
+        117,
+        119
+      ]
     },
     {
       "name": "Ticket",
-      "discriminator": [41, 228, 24, 165, 78, 90, 235, 200]
+      "discriminator": [
+        41,
+        228,
+        24,
+        165,
+        78,
+        90,
+        235,
+        200
+      ]
     },
     {
       "name": "Draw",
-      "discriminator": [225, 131, 41, 222, 122, 20, 146, 202]
+      "discriminator": [
+        225,
+        131,
+        41,
+        222,
+        122,
+        20,
+        146,
+        202
+      ]
+    },
+    {
+      "name": "DrawRisk",
+      "discriminator": [
+        48,
+        187,
+        10,
+        175,
+        205,
+        109,
+        176,
+        56
+      ]
     }
   ],
   "events": [
     {
+      "name": "DrawRiskReconciled",
+      "discriminator": [
+        147,
+        19,
+        165,
+        208,
+        13,
+        193,
+        150,
+        168
+      ]
+    },
+    {
       "name": "TicketPurchased",
-      "discriminator": [108, 59, 246, 95, 84, 145, 13, 71]
+      "discriminator": [
+        108,
+        59,
+        246,
+        95,
+        84,
+        145,
+        13,
+        71
+      ]
     },
     {
       "name": "RandomnessRequested",
-      "discriminator": [10, 64, 183, 29, 104, 63, 90, 149]
+      "discriminator": [
+        10,
+        64,
+        183,
+        29,
+        104,
+        63,
+        90,
+        149
+      ]
     },
     {
       "name": "DrawFinalized",
-      "discriminator": [138, 216, 3, 43, 232, 34, 183, 103]
+      "discriminator": [
+        138,
+        216,
+        3,
+        43,
+        232,
+        34,
+        183,
+        103
+      ]
     },
     {
       "name": "TicketSettled",
-      "discriminator": [72, 40, 13, 3, 184, 159, 190, 211]
+      "discriminator": [
+        72,
+        40,
+        13,
+        3,
+        184,
+        159,
+        190,
+        211
+      ]
     },
     {
       "name": "TicketRefunded",
-      "discriminator": [46, 173, 213, 43, 145, 205, 132, 218]
+      "discriminator": [
+        46,
+        173,
+        213,
+        43,
+        145,
+        205,
+        132,
+        218
+      ]
     }
   ],
   "errors": [
@@ -517,6 +971,11 @@
       "code": 6030,
       "name": "WinningTicketCannotRelease",
       "msg": "A winning ticket must preserve its owner-directed prize claim"
+    },
+    {
+      "code": 6031,
+      "name": "InvalidDrawRisk",
+      "msg": "The draw's combination liability account is invalid"
     }
   ],
   "types": [
@@ -544,7 +1003,10 @@
           {
             "name": "padding",
             "type": {
-              "array": ["u8", 32]
+              "array": [
+                "u8",
+                32
+              ]
             }
           }
         ]
@@ -562,7 +1024,10 @@
           {
             "name": "padding",
             "type": {
-              "array": ["u8", 32]
+              "array": [
+                "u8",
+                32
+              ]
             }
           }
         ]
@@ -600,13 +1065,19 @@
           {
             "name": "numbers",
             "type": {
-              "array": ["u8", 2]
+              "array": [
+                "u8",
+                2
+              ]
             }
           },
           {
             "name": "padding",
             "type": {
-              "array": ["u8", 32]
+              "array": [
+                "u8",
+                32
+              ]
             }
           }
         ]
@@ -636,7 +1107,10 @@
           {
             "name": "seed",
             "type": {
-              "array": ["u8", 32]
+              "array": [
+                "u8",
+                32
+              ]
             }
           },
           {
@@ -658,7 +1132,10 @@
           {
             "name": "numbers",
             "type": {
-              "array": ["u8", 2]
+              "array": [
+                "u8",
+                2
+              ]
             }
           },
           {
@@ -672,6 +1149,40 @@
           {
             "name": "payout_lamports",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DrawRisk",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "draw_time",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "phase",
+            "type": "u8"
+          },
+          {
+            "name": "total_count",
+            "type": "u64"
+          },
+          {
+            "name": "reserved_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "counts",
+            "type": {
+              "vec": "u64"
+            }
           }
         ]
       }
@@ -700,7 +1211,10 @@
           {
             "name": "winning_numbers",
             "type": {
-              "array": ["u8", 2]
+              "array": [
+                "u8",
+                2
+              ]
             }
           },
           {
@@ -722,7 +1236,10 @@
           {
             "name": "daily_hours",
             "type": {
-              "array": ["u8", 6]
+              "array": [
+                "u8",
+                6
+              ]
             }
           },
           {
@@ -785,6 +1302,54 @@
       }
     },
     {
+      "name": "LiabilityRules",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "revision",
+            "type": "u8"
+          },
+          {
+            "name": "daily_pooled",
+            "type": "bool"
+          },
+          {
+            "name": "quick_pooled",
+            "type": "bool"
+          },
+          {
+            "name": "pair_count",
+            "type": "u16"
+          },
+          {
+            "name": "risk_account_space",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DrawRiskReconciled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "draw_time",
+            "type": "i64"
+          },
+          {
+            "name": "previous_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "reserved_lamports",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "TicketPurchased",
       "type": {
         "kind": "struct",
@@ -804,7 +1369,10 @@
           {
             "name": "numbers",
             "type": {
-              "array": ["u8", 2]
+              "array": [
+                "u8",
+                2
+              ]
             }
           },
           {
@@ -838,7 +1406,10 @@
           {
             "name": "seed",
             "type": {
-              "array": ["u8", 32]
+              "array": [
+                "u8",
+                32
+              ]
             }
           }
         ]
@@ -856,7 +1427,10 @@
           {
             "name": "numbers",
             "type": {
-              "array": ["u8", 2]
+              "array": [
+                "u8",
+                2
+              ]
             }
           },
           {
@@ -886,7 +1460,10 @@
           {
             "name": "numbers",
             "type": {
-              "array": ["u8", 2]
+              "array": [
+                "u8",
+                2
+              ]
             }
           },
           {

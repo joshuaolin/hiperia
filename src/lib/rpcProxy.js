@@ -26,7 +26,7 @@ function encodeDiscriminator(discriminator) {
 const PROGRAMS = new Map(
   [
     [idl, { getrules: 56, getreferralrules: 34 }],
-    [vrfIdl, { getrules: 56, getaccessrules: 3, getrandomnessrules: 39 }],
+    [vrfIdl, { getrules: 56, getaccessrules: 3, getrandomnessrules: 39, getliabilityrules: 7 }],
   ].map(([program, sizes]) => [
     program.address,
     {
@@ -155,17 +155,32 @@ function validateTransaction(encoded) {
   const keys = message.staticAccountKeys;
   requireValue(
     message.compiledInstructions.length > 0 &&
-      message.compiledInstructions.length <= 8,
+      message.compiledInstructions.length <= 10,
   );
   let applicationInstruction = false;
+  let applicationInstructions = 0;
+  const computeBudgetTags = new Set();
   for (const instruction of message.compiledInstructions) {
     const program = keys[instruction.programIdIndex]?.toBase58();
     if (PROGRAMS.has(program)) {
       applicationInstruction = true;
+      applicationInstructions += 1;
       continue;
     }
     if (program === "ComputeBudget111111111111111111111111111111") {
-      requireValue([2, 3].includes(instruction.data[0]));
+      const data = Buffer.from(instruction.data);
+      const tag = data[0];
+      requireValue(
+        instruction.accountKeyIndexes.length === 0 &&
+          !computeBudgetTags.has(tag) &&
+          ((tag === 2 &&
+            data.length === 5 &&
+            data.readUInt32LE(1) > 0 &&
+            data.readUInt32LE(1) <= 1_400_000) ||
+            (tag === 3 && data.length === 9)),
+        "Unsupported compute budget instruction.",
+      );
+      computeBudgetTags.add(tag);
       continue;
     }
     requireValue(
@@ -180,7 +195,9 @@ function validateTransaction(encoded) {
       "Only support-wallet transfers are supported.",
     );
     applicationInstruction = true;
+    applicationInstructions += 1;
   }
+  requireValue(applicationInstructions <= 8);
   requireValue(applicationInstruction, "A Hiperia instruction is required.");
 }
 
