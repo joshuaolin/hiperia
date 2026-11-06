@@ -33,13 +33,18 @@ export function getTicketState(ticket, nowSeconds) {
       (number, index) => number === ticket.result.numbers[index],
     );
   const settled = ticket.settled === true;
+  const needsFundingCheck = ticket.reserveVersion === 4 || ticket.bankroll === true;
+  const funded = !needsFundingCheck || (ticket.claimFundingVerified === true && ticket.claimFunded === true);
   return {
     due,
     published,
     won,
     settled,
     refunded,
-    claimable: due && won && !settled && !refunded,
+    funded,
+    awaitingFunding: due && won && !settled && !refunded && needsFundingCheck && ticket.claimFundingVerified === true && ticket.claimFunded === false,
+    fundingUnknown: due && won && !settled && !refunded && needsFundingCheck && ticket.claimFundingVerified !== true,
+    claimable: due && won && !settled && !refunded && funded,
     group:
       refunded || settled || (published && !won)
         ? "done"

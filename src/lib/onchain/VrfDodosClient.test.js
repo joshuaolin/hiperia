@@ -14,6 +14,7 @@ import { VrfDodosClient } from "./VrfDodosClient.js";
 import { DEVNET_GENESIS_HASH, MAINNET_GENESIS_HASH } from "../network.js";
 import {
   getDrawPda,
+  getBankrollDrawPda,
   getOracleClientPda,
   getOracleRequestPda,
   getTicketPda,
@@ -21,6 +22,7 @@ import {
 import { ORAO_PROGRAM_ID, VRF_PROGRAM_ID } from "./vrfProtocol.js";
 import { deriveOracleSeed } from "./OracleClient.js";
 import { winningNumbersFromRandomness } from "./vrfRandomness.js";
+import { isDailyDrawTime } from "./time.js";
 
 const NOW = 1_800_000_000;
 const drawTime = NOW - 1;
@@ -50,6 +52,7 @@ function fixture() {
   });
   const draws = new Map();
   const tickets = new Map();
+  const ledgers = new Map();
   const oracleAccounts = new Map();
   const state = {
     sent: [],
@@ -62,6 +65,8 @@ function fixture() {
     receiverExecutable: false,
     receiverReadError: null,
     failReclaim: null,
+    vaultLamports: 5_001_176_240,
+    reservedLamports: 0,
   };
   const config = {
     rulesRevision: 6,
@@ -76,6 +81,8 @@ function fixture() {
     dailyTicketCostLamports: new BN(6_250_000),
     quickPayoutLamports: new BN(1_000_000_000),
     dailyPayoutLamports: new BN(2_000_000_000),
+    bankrollRules: { revision: 1, dailyEnabled: true, quickEnabled: true, entryRefundsReserved: true,
+      prizeReservedAtPurchase: false, claimRequiresFunding: true, ticketVersion: 4, ledgerAccountSpace: 50 },
   };
   const rawConfig = {
     isInitialized: true,
@@ -141,12 +148,16 @@ function fixture() {
     if (address.equals(client.vaultAddress))
       return {
         owner: client.program.programId,
-        lamports: 5_001_176_240,
+        lamports: state.vaultLamports,
         data: await client.program.coder.accounts.encode("vault", {
           bump: 1,
-          padding: Array(32).fill(0),
+          padding: (() => { const bytes = Buffer.alloc(32); bytes.writeBigUInt64LE(BigInt(state.reservedLamports)); return [...bytes]; })(),
         }),
       };
+    if (ledgers.has(address.toBase58())) return { owner: client.program.programId, executable: false,
+      lamports: 1_176_240, data: await client.program.coder.accounts.encode("bankrollDraw", ledgers.get(address.toBase58())) };
+    if (draws.has(address.toBase58())) return { owner: client.program.programId, executable: false,
+      lamports: 1_176_240, data: await client.program.coder.accounts.encode("draw", draws.get(address.toBase58())) };
     if (address.equals(client.oracle.networkAddress)) {
       const data = Buffer.alloc(472);
       data.set([212, 237, 148, 56, 97, 245, 51, 169]);
@@ -162,6 +173,13 @@ function fixture() {
       entry.data.fill(8, 73);
     }
     return entry ?? null;
+  };
+  connection.getMultipleAccountsInfoAndContext = async (addresses, commitment) => {
+    state.fundingSnapshotReads = (state.fundingSnapshotReads ?? 0) + 1;
+    state.fundingSnapshotAddresses = addresses;
+    assert.equal(commitment, "confirmed");
+    const snapshot = { context: { slot: 123 }, value: await Promise.all(addresses.map((address) => connection.getAccountInfo(address))) };
+    return state.fundingSnapshotMutation ? state.fundingSnapshotMutation(snapshot) : snapshot;
   };
   connection.simulateTransaction = async (transaction) => {
     state.metadataCalls++;
@@ -194,6 +212,9 @@ function fixture() {
     } else if (name === "getLiabilityRules") {
       type = "liabilityRules";
       data = { revision: 1, dailyPooled: true, quickPooled: false, pairCount: 420, riskAccountSpace: 3398 };
+    } else if (name === "getBankrollRules") {
+      type = "bankrollRules";
+      data = config.bankrollRules;
     } else {
       type = "randomnessRules";
       data = {
@@ -241,23 +262,36 @@ function fixture() {
     )
       throw state.failReclaim;
     if (state.fail && !state.landBeforeFailure) throw state.fail;
-    if (decoded.name === "buyTicket") {
+    if (decoded.name === "buyBankrollTicket") {
       const data = decoded.data;
+      const daily = isDailyDrawTime(data.drawTime.toNumber());
+      const cost = daily ? config.dailyTicketCostLamports : config.quickTicketCostLamports;
+      const prize = daily ? config.dailyPayoutLamports : config.quickPayoutLamports;
       const padding = Buffer.alloc(32);
-      padding[0] = 2;
-      padding.writeBigUInt64LE(1_000_000_000n, 1);
+      padding[0] = 4;
+      padding.writeBigUInt64LE(BigInt(prize.toString()), 1);
       tickets.set(instruction.keys[2].pubkey.toBase58(), {
         user: owner.publicKey,
         nonce: data.ticketNonce,
         numbers: data.numbers,
         drawTime: data.drawTime,
         settled: false,
-        paidLamports: config.quickTicketCostLamports,
+        paidLamports: cost,
         padding,
+        bump: getTicketPda(owner.publicKey, data.ticketNonce, client.program.programId)[1],
       });
+      state.vaultLamports += Number(cost.toString());
+      state.reservedLamports += Number(cost.toString());
       const time = data.drawTime.toNumber();
+      const [ledgerAddress, bump] = getBankrollDrawPda(time, client.program.programId);
+      const ledger = ledgers.get(ledgerAddress.toBase58()) ?? { drawTime: data.drawTime, bump, phase: 0,
+        pendingEntryLamports: new BN(0), unsettledEntries: new BN(0), padding: Array(16).fill(0) };
+      ledger.pendingEntryLamports = ledger.pendingEntryLamports.add(cost);
+      ledger.unsettledEntries = ledger.unsettledEntries.addn(1);
+      ledgers.set(ledgerAddress.toBase58(), ledger);
       if (!draws.has(getDrawPda(time)[0].toBase58()))
-        draws.set(getDrawPda(time)[0].toBase58(), makeDraw(time));
+        draws.set(getDrawPda(time)[0].toBase58(), makeDraw(time, { isDaily: daily, ticketCostLamports: cost, payoutLamports: prize }));
+      else draws.get(getDrawPda(time)[0].toBase58()).ticketCount = draws.get(getDrawPda(time)[0].toBase58()).ticketCount.addn(1);
     } else if (decoded.name === "requestDraw") {
       const time = decoded.data.drawTime.toNumber();
       const draw = draws.get(getDrawPda(time)[0].toBase58());
@@ -294,6 +328,39 @@ function fixture() {
       draw.numbers = await winningNumbersFromRandomness(Buffer.alloc(64, 8));
     }
     for (const entry of instructions) {
+      if (entry.name === "reconcileBankrollDraw") {
+        const ledger = ledgers.get(entry.instruction.keys[2].pubkey.toBase58());
+        if (ledger?.phase === 0) {
+          state.reservedLamports -= Number(ledger.pendingEntryLamports.toString());
+          ledger.pendingEntryLamports = new BN(0);
+          ledger.phase = 1;
+        }
+      }
+      if (entry.name === "releaseBankrollLosingTicket") {
+        const ticket = tickets.get(entry.instruction.keys[1].pubkey.toBase58());
+        if (ticket) {
+          ticket.settled = true;
+          const ledger = ledgers.get(entry.instruction.keys[3].pubkey.toBase58());
+          if (ledger?.phase === 0) {
+            state.reservedLamports -= Number(ledger.pendingEntryLamports.toString());
+            ledger.pendingEntryLamports = new BN(0);
+            ledger.phase = 1;
+          }
+          if (ledger) ledger.unsettledEntries = ledger.unsettledEntries.subn(1);
+        }
+      }
+      if (entry.name === "settleBankrollTicket") {
+        const ticket = tickets.get(entry.instruction.keys[1].pubkey.toBase58());
+        const ledger = ledgers.get(getBankrollDrawPda(ticket.drawTime.toString(), client.program.programId)[0].toBase58());
+        if (ledger?.phase === 0) {
+          state.reservedLamports -= Number(ledger.pendingEntryLamports.toString());
+          ledger.pendingEntryLamports = new BN(0);
+          ledger.phase = 1;
+        }
+        ledger.unsettledEntries = ledger.unsettledEntries.subn(1);
+        ticket.settled = true;
+        state.vaultLamports -= Number(Buffer.from(ticket.padding).readBigUInt64LE(1));
+      }
       if (entry.name !== "releaseLosingTicket") continue;
       const ticket = tickets.get(entry.instruction.keys[2].pubkey.toBase58());
       if (ticket) ticket.settled = true;
@@ -311,6 +378,7 @@ function fixture() {
     makeDraw,
     oracleAccounts,
     storage,
+    ledgers,
   };
 }
 
@@ -323,14 +391,9 @@ test("verified revision six uses zero winning sentinels only with the new oracle
   assert.equal(config.randomnessRules.oracleProgram, ORAO_PROGRAM_ID);
   assert.equal(config.capacity.freeLamports, 5_000_000_000);
   assert.equal(config.liabilityRules.dailyPooled, true);
-  assert.equal(
-    config.capacity.dailySlots,
-    Math.floor(5_000_000_000 / (2_000_000_000 - 6_250_000)),
-  );
-  assert.equal(
-    config.capacity.quickSlots,
-    Math.floor(5_000_000_000 / (1_000_000_000 - 7_200_000)),
-  );
+  assert.equal(config.bankrollRules.ticketVersion, 4);
+  assert.equal(config.capacity.dailySlots, null);
+  assert.equal(config.capacity.quickSlots, null);
 });
 
 test("new purchases use the VRF program and draw account, with distinct identities for repeated same-time entries", async () => {
@@ -340,10 +403,10 @@ test("new purchases use the VRF program and draw account, with distinct identiti
   assert.notEqual(first.id, second.id);
   assert.equal(state.sent.length, 2);
   for (const sent of state.sent) {
-    assert.equal(sent.name, "buyTicket");
+    assert.equal(sent.name, "buyBankrollTicket");
     assert.equal(sent.instruction.programId.toBase58(), VRF_PROGRAM_ID);
     assert.equal(
-      sent.instruction.keys[5].pubkey.toBase58(),
+      sent.instruction.keys[3].pubkey.toBase58(),
       getDrawPda(NOW + 60)[0].toBase58(),
     );
   }
@@ -352,6 +415,186 @@ test("new purchases use the VRF program and draw account, with distinct identiti
   assert.ok(
     tickets.every((ticket) => !ticket.legacy && ticket.result === null),
   );
+});
+
+test("more than twenty quick entries do not consume treasury capital, even with zero available funds", async () => {
+  const { client, config, state } = fixture();
+  state.vaultLamports = 1_176_240;
+  const before = await client.getCapacity(config);
+  assert.equal(before.freeLamports, 0);
+  for (let index = 0; index < 25; index++) {
+    const receipt = await client.buyTicket([2, 22], { config, drawTime: NOW + 60 + index });
+    assert.equal(receipt.reserveVersion, 4);
+  }
+  const after = await client.getCapacity(config);
+  assert.equal(state.sent.length, 25);
+  assert.equal(after.freeLamports, 0);
+  assert.equal(after.vaultLamports - before.vaultLamports, 25 * 7_200_000);
+  assert.equal(after.reservedLamports, 25 * 7_200_000);
+});
+
+test("daily checkout quotes actual entry-only holds and shared account rents without a capital gate", async () => {
+  const { client, config, state } = fixture();
+  state.vaultLamports = 1_176_240;
+  const time = 1_800_007_200;
+  const first = await client.getPurchaseQuote([2, 22], { drawTime: time, config });
+  assert.equal(first.bankroll, true);
+  assert.equal(first.quick, false);
+  assert.equal(first.entryLamports, 6_250_000);
+  assert.equal(first.prizeLamports, 2_000_000_000);
+  assert.equal(first.requiredBackingLamports, 0);
+  assert.equal(first.canPurchase, true);
+  assert.ok(first.ledgerRentLamports > 0);
+  await client.buyTicket([2, 22], { config, drawTime: time });
+  const second = await client.getPurchaseQuote([2, 22], { drawTime: time, config });
+  assert.equal(second.ledgerRentLamports, 0);
+  assert.equal(second.drawRentLamports, 0);
+  await client.buyTicket([2, 22], { config, drawTime: time });
+  const capacity = await client.getCapacity(config);
+  assert.equal(capacity.freeLamports, 0);
+  assert.equal(capacity.reservedLamports, 12_500_000);
+  assert.equal((await client.getTickets(config))[0].payoutLamports, 2_000_000_000);
+});
+
+test("missing or malformed bankroll metadata pauses new entries without falling back to a backed purchase", async () => {
+  for (const change of [
+    { revision: 2 }, { entryRefundsReserved: false }, { prizeReservedAtPurchase: true },
+    { ticketVersion: 3 }, { ledgerAccountSpace: 49 }, { claimRequiresFunding: false },
+  ]) {
+    const { client, config, state } = fixture();
+    state.metadataOverride = (type, data) => type === "bankrollRules" ? { ...data, ...change } : data;
+    assert.equal((await client.getConfig()).bankrollRules, null);
+    await assert.rejects(client.buyTicket([2, 22], { config, drawTime: NOW + 60 }), /could not be verified/);
+    assert.equal(state.sent.length, 0);
+  }
+});
+
+async function winningBankrollFixture(count = 1) {
+  const setup = fixture();
+  const { client, config, draws } = setup;
+  for (let index = 0; index < count; index++)
+    await client.buyTicket([2, 22], { config, drawTime: NOW + 60 });
+  Object.assign(draws.get(getDrawPda(NOW + 60)[0].toBase58()), {
+    status: 2, numbers: [2, 22], oracleClient: getOracleClientPda(NOW + 60)[0],
+    oracleRequest: getOracleRequestPda(Array(32).fill(0))[0],
+  });
+  client.now = () => (NOW + 100) * 1000;
+  return setup;
+}
+
+test("an unfunded win stays unpaid, refilling enables the same ticket and duplicate claims are refused", async () => {
+  const { client, config, state } = await winningBankrollFixture();
+  state.vaultLamports = 1_176_240 + state.reservedLamports;
+  const [waiting] = await client.getTickets(config);
+  assert.equal(waiting.claimFundingVerified, true);
+  assert.equal(waiting.claimFunded, false);
+  assert.equal(waiting.settled, false);
+  const attempts = state.sent.length;
+  await assert.rejects(client.settleTicket(waiting), /Waiting for treasury funding/);
+  assert.equal(state.sent.length, attempts);
+  state.vaultLamports += 1_000_000_000;
+  const [funded] = await client.getTickets(config);
+  assert.equal(funded.claimFunded, true);
+  await client.settleTicket(funded);
+  assert.equal(state.sent.at(-1).name, "settleBankrollTicket");
+  assert.equal((await client.getTickets(config))[0].settled, true);
+  const paidAttempts = state.sent.length;
+  await assert.rejects(client.settleTicket(funded), /already claimed/);
+  assert.equal(state.sent.length, paidAttempts);
+});
+
+test("claim funding can release its own finalized entry hold but cannot spend another draw or old ticket holds", async () => {
+  const { client, state, config } = await winningBankrollFixture();
+  state.reservedLamports = 2_007_200_000;
+  state.vaultLamports = 3_000_000_000 + 1_176_240;
+  const [ticket] = await client.getTickets(config);
+  assert.equal(ticket.claimAvailableLamports, 1_000_000_000);
+  assert.equal(ticket.claimFunded, true);
+  await client.settleTicket(ticket);
+  assert.equal(state.reservedLamports, 2_000_000_000);
+  assert.equal(state.vaultLamports, 2_000_000_000 + 1_176_240);
+});
+
+test("claim funding uses one coherent ledger/draw/vault snapshot and ignores stale display capacity", async () => {
+  const { client, config, state, ledgers } = await winningBankrollFixture();
+  const [ticket] = await client.getTickets(config);
+  const ledger = ledgers.get(getBankrollDrawPda(ticket.drawTime)[0].toBase58());
+  ledger.phase = 1;
+  ledger.pendingEntryLamports = new BN(0);
+  state.reservedLamports = 0;
+  state.vaultLamports = 1_176_240;
+  client.bankroll.read = async () => { throw new Error("Independent ledger reads must not be used for a claim quote"); };
+  const before = state.fundingSnapshotReads;
+  const funding = await client.bankroll.funding(ticket, { freeLamports: 20_000_000_000 });
+  assert.equal(state.fundingSnapshotReads, before + 1);
+  assert.deepEqual(state.fundingSnapshotAddresses.map((address) => address.toBase58()), [
+    getBankrollDrawPda(ticket.drawTime)[0].toBase58(), getDrawPda(ticket.drawTime)[0].toBase58(), client.vaultAddress.toBase58(),
+  ]);
+  assert.equal(funding.fundingSlot, 123);
+  assert.equal(funding.releasableEntryLamports, 0);
+  assert.equal(funding.claimAvailableLamports, 0);
+  assert.equal(funding.claimFunded, false);
+});
+
+test("unverified funding snapshot accounts cannot enable a v4 claim approval", async () => {
+  for (const mutate of [
+    (snapshot) => ({ ...snapshot, context: { slot: null } }),
+    (snapshot) => ({ ...snapshot, value: snapshot.value.slice(0, 2) }),
+    (snapshot) => { snapshot.value[0].owner = SystemProgram.programId; return snapshot; },
+    (snapshot) => { snapshot.value[1].data[0] ^= 1; return snapshot; },
+    (snapshot) => { snapshot.value[2].data[17] = 1; return snapshot; },
+    (snapshot) => { snapshot.value[0].data = snapshot.value[0].data.subarray(1); return snapshot; },
+    (snapshot) => { snapshot.value[0].data.writeBigUInt64LE(2n, 26); return snapshot; },
+    (snapshot) => { snapshot.value[0].data.writeBigUInt64LE(1n, 18); return snapshot; },
+  ]) {
+    const { client, config, state } = await winningBankrollFixture();
+    const [ticket] = await client.getTickets(config);
+    state.fundingSnapshotMutation = mutate;
+    const approvals = state.sent.length;
+    await assert.rejects(client.settleTicket(ticket));
+    assert.equal(state.sent.length, approvals);
+  }
+});
+
+test("claim all rechecks funds after each actual payment and leaves later unfunded wins unpaid", async () => {
+  const { client, config, state } = await winningBankrollFixture(3);
+  state.vaultLamports = state.reservedLamports + 1_176_240 + 1_000_000_000;
+  const tickets = await client.getTickets(config);
+  const result = await client.settleBatch(tickets);
+  assert.equal(result.settled, 1);
+  assert.equal(result.waiting, 2);
+  const refreshed = await client.getTickets(config);
+  assert.equal(refreshed.filter((ticket) => ticket.settled).length, 1);
+  assert.equal(refreshed.filter((ticket) => !ticket.settled && !ticket.claimFunded).length, 2);
+});
+
+test("a concurrently refunded v4 ticket is skipped without stopping later valid claims", async () => {
+  const { client, config, state, tickets } = await winningBankrollFixture(2);
+  const loaded = await client.getTickets(config);
+  const refunded = tickets.get(loaded[0].address);
+  refunded.settled = true;
+  refunded.padding[9] = 1;
+  const before = state.sent.length;
+  const result = await client.settleBatch(loaded);
+  assert.equal(result.settled, 1);
+  assert.equal(state.sent.length, before + 1);
+  assert.equal(state.sent.at(-1).name, "settleBankrollTicket");
+});
+
+test("later claim funding read failures preserve an earlier actual v4 payout", async () => {
+  const { client, config, state } = await winningBankrollFixture(2);
+  const loaded = await client.getTickets(config);
+  state.fundingSnapshotMutation = (snapshot) => {
+    if (state.sent.some((entry) => entry.name === "settleBankrollTicket"))
+      throw new Error("Funding RPC unavailable after the first confirmed payout");
+    return snapshot;
+  };
+  await assert.rejects(client.settleBatch(loaded), (failure) => {
+    assert.equal(failure.confirmedSettlements, 1);
+    assert.equal(failure.confirmedSignatures.length, 1);
+    return true;
+  });
+  assert.equal(state.sent.filter((entry) => entry.name === "settleBankrollTicket").length, 1);
 });
 
 test("unverified oracle metadata or fixed winning numbers never enable the new public game", async () => {
@@ -596,7 +839,7 @@ test("wallet changes prevent the second approval after oracle fulfillment", asyn
 
 test("new settlements keep the original owner as a non-signing recipient", async () => {
   const { client, owner } = fixture();
-  const ticket = { id: "1", user: owner.publicKey.toBase58(), drawTime };
+  const ticket = { id: "1", user: owner.publicKey.toBase58(), drawTime, reserveVersion: 2 };
   const instruction = await client.settleInstruction(ticket);
   assert.equal(
     instruction.keys[4].pubkey.toBase58(),
@@ -626,6 +869,7 @@ test("published losing tickets release reserves without involving their recipien
   const ticket = {
     id: "1",
     user: user.toBase58(),
+    reserveVersion: 2,
     drawTime,
     numbers: [8, 13],
   };
@@ -651,6 +895,7 @@ test("actual published winners retain the normal owner-directed payout instructi
   });
   const instruction = await client.settleInstruction({
     id: "1",
+    reserveVersion: 2,
     user: owner.publicKey.toBase58(),
     drawTime,
     numbers: [7, 13],
@@ -670,6 +915,7 @@ test("an unpublished draw does not route an apparent loss through reserve releas
   const { client, owner } = fixture();
   const instruction = await client.settleInstruction({
     id: "1",
+    reserveVersion: 2,
     user: owner.publicKey.toBase58(),
     drawTime,
     numbers: [8, 13],
@@ -682,7 +928,7 @@ test("an unpublished draw does not route an apparent loss through reserve releas
 
 test("an explicit losing-ticket release keeps wallet-change protection and never retries", async () => {
   const { client, owner, state } = fixture();
-  const ticket = { id: "1", user: owner.publicKey.toBase58(), drawTime };
+  const ticket = { id: "1", user: owner.publicKey.toBase58(), drawTime, reserveVersion: 2 };
   await assert.rejects(
     client.releaseLosingTicket(ticket, {
       assertActive: () => {
@@ -756,6 +1002,7 @@ test("unrequested expired draws refund through the System Program sentinel witho
   draws.set(getDrawPda(time)[0].toBase58(), makeDraw(time));
   await client.refundTicket({
     id: "1",
+    reserveVersion: 2,
     user: owner.publicKey.toBase58(),
     drawTime: time,
   });
@@ -893,6 +1140,46 @@ async function cleanupPlan(fixture, options) {
   });
   return client.finalizationPlan(draw, proof, options);
 }
+
+test("verified v4 completion reconciles entry holds and releases only actual losses without any owner account", async () => {
+  const setup = fixture();
+  const { client, owner, draws, ledgers, state } = setup;
+  const loser = addCleanupTicket(setup, 1);
+  const winner = addCleanupTicket(setup, 2, { numbers: [20, 18] });
+  loser.account.padding[0] = 4;
+  winner.account.padding[0] = 4;
+  const [ledgerAddress, bump] = getBankrollDrawPda(drawTime);
+  ledgers.set(ledgerAddress.toBase58(), { drawTime: new BN(drawTime), bump, phase: 0,
+    pendingEntryLamports: new BN(14_400_000), unsettledEntries: new BN(2), padding: Array(16).fill(0) });
+  state.reservedLamports = 14_400_000;
+  draws.get(getDrawPda(drawTime)[0].toBase58()).ticketCount = new BN(2);
+  const plan = await cleanupPlan(setup);
+  const decoded = plan.transaction.instructions.map((instruction) => ({ instruction,
+    name: client.program.coder.instruction.decode(instruction.data).name }));
+  assert.equal(plan.bankrollReconcileIncluded, true);
+  assert.equal(plan.plannedLosses, 1);
+  assert.ok(plan.packetBytes <= 1232);
+  assert.ok(decoded.some((entry) => entry.name === "reconcileBankrollDraw"));
+  const cleanup = decoded.find((entry) => entry.name === "releaseBankrollLosingTicket").instruction;
+  assert.equal(cleanup.keys.length, 4);
+  assert.ok(cleanup.keys.every((entry) => !entry.pubkey.equals(owner.publicKey)));
+  assert.equal(cleanup.keys[1].pubkey.toBase58(), loser.address.toBase58());
+  const result = await client.finalizeDraw(drawTime);
+  assert.equal(result.releasedLosses, 1);
+  assert.equal(state.reservedLamports, 0);
+  assert.equal(loser.account.settled, true);
+  assert.equal(winner.account.settled, false);
+});
+
+test("optional bankroll ledger reads cannot block valid draw finalization", async () => {
+  const setup = fixture();
+  setup.client.bankroll.read = async () => { throw new Error("Bankroll account read unavailable"); };
+  const plan = await cleanupPlan(setup);
+  assert.equal(plan.bankrollReconcileIncluded, false);
+  assert.ok(plan.packetBytes <= 1232);
+  const result = await setup.client.finalizeDraw(drawTime);
+  assert.equal(result.draw.status, "final");
+});
 
 test("completion includes at most six actual losses from the fulfilled proof and preserves winners, refunds, settled and malformed records", async () => {
   const setup = fixture();

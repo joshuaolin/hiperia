@@ -26,7 +26,7 @@ function encodeDiscriminator(discriminator) {
 const PROGRAMS = new Map(
   [
     [idl, { getrules: 56, getreferralrules: 34 }],
-    [vrfIdl, { getrules: 56, getaccessrules: 3, getrandomnessrules: 39, getliabilityrules: 7 }],
+    [vrfIdl, { getrules: 56, getaccessrules: 3, getrandomnessrules: 39, getliabilityrules: 7, getbankrollrules: 9 }],
   ].map(([program, sizes]) => [
     program.address,
     {

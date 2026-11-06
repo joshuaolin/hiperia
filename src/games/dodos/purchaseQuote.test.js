@@ -81,3 +81,19 @@ test("metadata failures, stale prices and malformed rents never enable daily ent
     );
   }
 });
+
+test("claim-funded quotes bind both draw types and never require existing treasury capital", () => {
+  const active = { ...config, quickTicketCostLamports: "7200000", quickPayoutLamports: "1000000000",
+    bankrollRules: { revision: 1, ticketVersion: 4, prizeReservedAtPurchase: false, claimRequiresFunding: true } };
+  for (const quick of [false, true]) {
+    const current = { ...quote, bankroll: true, pooled: false, quick, ticketVersion: 4,
+      entryLamports: quick ? 7_200_000 : 6_250_000, prizeLamports: quick ? 1_000_000_000 : 2_000_000_000,
+      reserveIncreaseLamports: quick ? 7_200_000 : 6_250_000,
+      freeLamports: 0, ledgerRentLamports: quote.riskRentLamports };
+    assert.equal(matchesPurchaseQuote(current, [2, 22], drawTime, active), true);
+    for (const change of [{ requiredBackingLamports: 1 }, { entryLamports: 1 }, { ticketVersion: 3 },
+      { drawTime: drawTime + 1 }, { numbers: [22, 2] }, { canPurchase: false }, { ledgerRentLamports: -1 }])
+      assert.equal(matchesPurchaseQuote({ ...current, ...change }, [2, 22], drawTime, active), false);
+    assert.equal(matchesPurchaseQuote(current, [2, 22], drawTime, { ...active, bankrollRules: null }), false);
+  }
+});

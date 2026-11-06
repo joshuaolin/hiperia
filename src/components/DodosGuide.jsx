@@ -46,8 +46,7 @@ export default function DodosGuide({
     Number.isSafeInteger(refundAfterSeconds) && refundAfterSeconds > 0
       ? refundAfterSeconds / 3600
       : null;
-  const pooledDaily =
-    randomnessVerified && rules?.liabilityRules?.dailyPooled === true;
+  const bankroll = randomnessVerified && rules?.bankrollRules?.ticketVersion === 4;
   return (
     <section
       id="dodos-guide"
@@ -114,8 +113,8 @@ export default function DodosGuide({
           <tr>
             <th scope="row">Ticket validity</th>
             <td>
-              One selected date and time. Multiple entries are allowed while
-              prize reserves are available.
+              One selected date and time. Multiple entries are allowed.
+              {bankroll && " New winning prizes may wait for treasury funding."}
             </td>
           </tr>
         </tbody>
@@ -210,7 +209,9 @@ export default function DodosGuide({
               <strong>Claim prize</strong> or <strong>Claim all</strong> to
               receive your prizes. Large claims may need more than one wallet
               approval. Losing tickets appear in <strong>Done</strong>; no
-              manual close is needed.
+              manual close is needed. Unfunded winning tickets stay in Win with
+              no expiry. Refresh after the operator funds the prize vault, then
+              claim; no replacement ticket or new draw is needed.
             </p>
           </div>
         </li>
@@ -227,16 +228,15 @@ export default function DodosGuide({
             Buying a ticket adds its entry payment to the prize vault. It does
             not pay out a reward. A winning payout leaves only when claimed,
             once per ticket, to its recorded wallet owner.
-            {pooledDaily
-              ? " Daily tickets in the same draw share backing across different ordered pairs. The contract covers the highest possible matching payout plus possible entry refunds. More tickets on the same pair still need enough backing for all of their accepted prizes. The price and prize stay fixed for each accepted ticket."
+            {bankroll
+              ? " New daily and quick tickets do not reserve their full prize at purchase. They reserve only their incoming entry payment for an eligible timeout refund. Once the draw completes, that entry hold is released. A winning prize can be claimed only from currently available treasury funds; if funds are short, the unpaid winning ticket waits for the operator to refill the prize vault. The prize does not expire."
               : publicGame && randomnessVerified
                 ? " Daily purchases wait for verified shared-backing rules. Existing ticket prizes stay protected."
                 : " Each entry reserves its full prize inside the same vault."}
-            {pooledDaily || (publicGame && randomnessVerified)
-              ? " Quick draws remain independently backed by their full prizes, so their capacity is still finite."
-              : " Daily and quick tickets use different prize amounts, so the same vault can back different numbers of entries."}{" "}
-            Releasing losing backing does not move SOL out of the vault. A
-            winning prize stays backed until it is paid to its ticket owner.
+            {bankroll
+              ? " Older tickets retain their original protected prize backing, and new prizes cannot spend those protected funds. Only the ticket's immutable owner receives a winning payout; a ticket cannot be claimed twice."
+              : " Daily and quick tickets retain their accepted backing rules."}{" "}
+            Releasing protected funds does not move SOL out of the vault.
             {randomnessVerified &&
               " Completing a draw can release a batch of losing reserves in the same approval. The operator can process remaining losses separately. A ticket appearing in Done does not by itself release its reserve."}
           </p>
@@ -244,7 +244,7 @@ export default function DodosGuide({
             Every purchase also pays a network fee and ticket account rent.
             Those costs are separate from the entry price.
             {randomnessVerified
-              ? ` The first entry in a draw also pays rent for its shared draw account.${pooledDaily ? " The first pooled daily entry additionally creates the shared combination account; Buy a ticket shows its current account rent quote before approval." : ""} Revealing a draw pays the current oracle fee and request account rent from the requesting wallet. The cost review reads these amounts from Devnet before you approve. Completing the draw can need a second approval and network fee.`
+              ? ` The first entry in a draw also pays rent for its shared draw account.${bankroll ? " The first new entry also creates a shared refund account; Buy a ticket quotes its actual rent before approval." : ""} Revealing a draw pays the current oracle fee and request account rent from the requesting wallet. The cost review reads these amounts from Devnet before you approve. Completing the draw can need a second approval and network fee.`
               : " A quick draw has its own result account, so recording each quick result also costs account rent."}
           </p>
           <p>

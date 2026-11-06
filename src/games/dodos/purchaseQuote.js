@@ -24,6 +24,20 @@ export function purchaseQuoteKey(numbers, drawTime) {
 }
 
 export function matchesPurchaseQuote(quote, numbers, drawTime, config) {
+  if (quote?.bankroll === true) {
+    if (config?.bankrollRules?.revision !== 1 || config.bankrollRules.ticketVersion !== 4 ||
+      config.bankrollRules.prizeReservedAtPurchase !== false || config.bankrollRules.claimRequiresFunding !== true ||
+      purchaseQuoteKey(quote.numbers, quote.drawTime) !== purchaseQuoteKey(numbers, drawTime) ||
+      !purchaseQuoteKey(numbers, drawTime) || quote.ticketVersion !== 4 ||
+      amounts.some((field) => !Number.isSafeInteger(quote[field]) || quote[field] < 0)) return false;
+    try {
+      return quote.entryLamports === Number((quote.quick ? config.quickTicketCostLamports : config.dailyTicketCostLamports).toString()) &&
+        quote.prizeLamports === Number((quote.quick ? config.quickPayoutLamports : config.dailyPayoutLamports).toString()) &&
+        quote.reserveIncreaseLamports === quote.entryLamports && quote.requiredBackingLamports === 0 &&
+        quote.canPurchase === true && quote.ledgerRentLamports === quote.riskRentLamports &&
+        quote.riskRentLamports + quote.drawRentLamports + quote.ticketRentLamports === quote.accountRentLamports;
+    } catch { return false; }
+  }
   if (
     !quote ||
     quote.pooled !== true ||

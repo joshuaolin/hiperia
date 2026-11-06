@@ -268,7 +268,7 @@ function TicketCard({
               ? "Ready to complete"
               : "Awaiting result"
           : won
-            ? "Prize ready"
+            ? state.awaitingFunding ? "Waiting for treasury funding" : state.fundingUnknown ? "Checking claim funding" : "Prize ready"
             : "No match";
   return (
     <article className="ticket-card">
@@ -377,7 +377,11 @@ function TicketCard({
                         ? "The draw is due. Review reveal costs to request verifiable randomness."
                         : "Draw is due. Record the result to check this ticket."
                 : won
-                  ? "Both numbers match in order. UAT prizes have no claim deadline."
+                  ? state.awaitingFunding
+                    ? "Both numbers match. Your prize remains unpaid until the operator refills the prize vault. Refresh after funding; the ticket does not expire."
+                    : state.fundingUnknown
+                      ? "Both numbers match. Refresh to verify current prize vault funding before claiming; this unpaid win does not expire."
+                      : "Both numbers match in order. Prizes have no claim deadline."
                   : "The recorded numbers do not match. No prize is due."}
       </p>
       {published && (
@@ -432,7 +436,7 @@ function TicketCard({
           <p className="ticket-action-note">
             {ticket.refundEligible === true
               ? "The contract currently permits a refund because the oracle deadline passed without a completed result. Only this ticket's actual entry payment is returned."
-              : "Reveal requests are recorded on-chain. The oracle supplies randomness; completing the draw records its numbers and may release losing reserves in the same approval. Winning prizes keep their full backing. Wallet approvals and network fees apply."}
+              : "Reveal requests are recorded on-chain. The oracle supplies randomness; completing the draw records its numbers and may release protected entry payments or older losing reserves in the same approval. New match prizes are paid only when claimed and can wait for treasury funding. Wallet approvals and network fees apply."}
           </p>
         </>
       )}
@@ -453,7 +457,7 @@ function TicketCard({
               disabled={!canClaimTicket || !state.claimable}
               onClick={() => game.settle(ticket)}
             >
-              Claim prize
+              {state.awaitingFunding ? "Waiting for funding" : state.fundingUnknown ? "Refresh funding status" : "Claim prize"}
             </button>
           )}
         </div>
@@ -462,8 +466,15 @@ function TicketCard({
         <p className="ticket-action-note">
           {!published
             ? "Record draw result saves the contract's result; you cannot choose the numbers. This wallet pays the network fee and result account rent once per draw."
-            : "Claim prize transfers this ticket's payout to your wallet. A network fee applies."}
+            : "Claim prize transfers this ticket's recorded payout once to its owner. Funding is checked again before wallet approval. A network fee applies; an unfunded or failed claim stays unpaid."}
         </p>
+      )}
+      {state.awaitingFunding && game.config?.capacity?.vaultAddress && (
+        <div className="ticket-history">
+          <HistoryLink address={game.config.capacity.vaultAddress} network={game.network}>
+            Prize vault funding history
+          </HistoryLink>
+        </div>
       )}
     </article>
   );
@@ -581,8 +592,9 @@ export default function DodosTickets({ game }) {
         </div>
         {filter === "win" && claimable.length > 0 && (
           <p className="ticket-filter-note">
-            Claims use each ticket&apos;s recorded prize. Your wallet may
-            request several approvals for a large batch; network fees apply.
+            Claims use each ticket&apos;s recorded prize. Funding is checked
+            before each new prize; unfunded wins stay unpaid in Win. Your wallet
+            may request several approvals; network fees apply.
           </p>
         )}
         {filter === "ongoing" && hasLoaded && !game.isLoading && (

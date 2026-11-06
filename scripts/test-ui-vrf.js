@@ -89,6 +89,10 @@ tickets[6].result = {
   oracleProgram,
 };
 tickets[2].drawTime = now / 1000 - 3 * 3600;
+tickets[2].reserveVersion = 4;
+tickets[2].bankroll = true;
+tickets[2].claimFundingVerified = true;
+tickets[2].claimFunded = false;
 tickets.push(
   ...[8, 9].map((id) => ({
     ...tickets[2],
@@ -125,12 +129,23 @@ const fixture = {
       pairCount: 420,
       riskAccountSpace: 3398,
     },
+    bankrollRules: {
+      revision: 1,
+      dailyEnabled: true,
+      quickEnabled: true,
+      entryRefundsReserved: true,
+      prizeReservedAtPurchase: false,
+      claimRequiresFunding: true,
+      ticketVersion: 4,
+      ledgerAccountSpace: 50,
+    },
     randomnessRules: {
       oracleProgram,
       refundAfterSeconds: 86_400,
       pendingRequestSpace: 749,
     },
     capacity: {
+      vaultAddress: address(43),
       freeLamports: 3_000_000_047,
       reservedLamports: 4_000_000_148,
       vaultLamports: 7_000_890_195,
@@ -218,19 +233,20 @@ export function useDodosGame() {
   const [capacity, setCapacity] = useState(initial.config.capacity);
   const [randomnessVerified, setVerified] = useState(true);
   const [metadataAvailable, setMetadataAvailable] = useState(true);
-  const [liabilityAvailable, setLiabilityAvailable] = useState(true);
+  const [bankrollAvailable, setBankrollAvailable] = useState(true);
   const [purchaseQuote, setPurchaseQuote] = useState(null);
   const action = (type, ticket) => window.__oracleUiActions.push(type + (ticket ? ':' + ticket.id : ''));
-  window.__setTestCapacity = setCapacity;
+  window.__setTestCapacity = (values) => setCapacity((previous) => ({ ...previous, ...values }));
   window.__setTestVerification = setVerified;
   window.__setTestMetadataAvailable = setMetadataAvailable;
-  window.__setTestLiabilityAvailable = setLiabilityAvailable;
+  window.__setTestBankrollAvailable = setBankrollAvailable;
   window.__setTestPurchaseQuote = setPurchaseQuote;
+  window.__setTestTicketFunding = (funded) => setTickets((values) => values.map((ticket) => ticket.bankroll ? { ...ticket, claimFundingVerified: true, claimFunded: funded } : ticket));
   const quoteDraw = (ticket) => setQuotes((values) => ({ ...values, [ticket.sourceProgram + ':' + ticket.drawTime]: { drawTime: ticket.drawTime, sourceProgram: ticket.sourceProgram, ...costs } }));
-  return { ...initial, tickets, config: metadataAvailable ? { ...initial.config, capacity, randomnessVerified, liabilityRules: liabilityAvailable ? initial.config.liabilityRules : null } : null, oracleQuotes,
+  return { ...initial, tickets, config: metadataAvailable ? { ...initial.config, capacity, randomnessVerified, bankrollRules: bankrollAvailable ? initial.config.bankrollRules : null } : null, oracleQuotes,
     connected: true, publicGame: true, canSign: true, authorized: metadataAvailable, uatReady: metadataAvailable, networkAllowed: true, historyLoaded: true,
     isLoading: false, loadFailed: false, refreshWarning: false, refreshCooldown: 0,
-    pending: false, selectedNumbers, drawChoice, quickDraw: drawChoice === 'quick', drawExpired: false, purchaseQuote,
+    pending: false, selectedNumbers, drawChoice, selectedDrawTime: drawChoice === 'quick' ? initial.now / 1000 + 60 : Number(drawChoice), quickDraw: drawChoice === 'quick', drawExpired: false, purchaseQuote,
     purchaseQuoteLoading: false, purchaseQuoteError: '', purchaseQuoteCooldown: 0, refreshPurchaseQuote() {},
     dailyDraws: [initial.now / 1000 + 18000, initial.now / 1000 + 32400], setDrawChoice: setDraw,
     select(number) { setNumbers((values) => values.includes(number) ? values.filter((n) => n !== number) : [...values, number]); },
@@ -244,7 +260,7 @@ export function useDodosGame() {
         : { ...entry, draw: { ...entry.draw, status: 'pending', oracleRequest: ${JSON.stringify(address(120))} } })); },
     refresh() { action('refresh'); setTickets((values) => values.map((entry) => entry.sourceProgram === initial.tickets[2].sourceProgram && entry.drawTime === initial.tickets[2].drawTime ? { ...entry, draw: { ...entry.draw, status: 'fulfilled' } } : entry)); },
     refund(ticket) { action('refund', ticket); setTickets((values) => values.map((entry) => entry.id === ticket.id ? { ...entry, refunded: true, settled: true } : entry)); },
-    settle(ticket) { action('claim', ticket); }, claimAll() { action('claimAll'); },
+    settle(ticket) { action('claim', ticket); if (window.__testClaimConfirmed) setTickets((values) => values.map((entry) => entry.id === ticket.id && entry.sourceProgram === ticket.sourceProgram ? { ...entry, settled: true } : entry)); }, claimAll() { action('claimAll'); },
   };
 }`;
       await route.fulfill({
@@ -277,7 +293,7 @@ export function useDodosGame() {
     "3.000000047 SOL",
   ]);
   await expect(page.locator(".prize-vault-balance")).toContainText(
-    "Winning payouts leave only when claimed, once per ticket.",
+    "Winning payouts leave only on a confirmed claim, once per ticket.",
   );
   const purchasePanel = page.locator("#buy-ticket");
   await purchasePanel
@@ -287,7 +303,7 @@ export function useDodosGame() {
     .getByRole("button", { name: "Number 13", exact: true })
     .click();
   await expect(
-    purchasePanel.getByRole("button", { name: /Checking daily backing/ }),
+    purchasePanel.getByRole("button", { name: /Checking entry quote/ }),
   ).toBeDisabled();
   await page.evaluate(
     (drawTime) => {
@@ -297,7 +313,10 @@ export function useDodosGame() {
         vaultLamports: 4_000_890_165,
       });
       window.__setTestPurchaseQuote({
-        pooled: true,
+        bankroll: true,
+        pooled: false,
+        ticketVersion: 4,
+        quick: false,
         numbers: [7, 13],
         drawTime,
         entryLamports: 6_250_011,
@@ -307,6 +326,7 @@ export function useDodosGame() {
         freeLamports: 17,
         canPurchase: true,
         riskRentLamports: 24_540_491,
+        ledgerRentLamports: 24_540_491,
         drawRentLamports: 2_984_581,
         ticketRentLamports: 1_000_003,
         accountRentLamports: 28_525_075,
@@ -334,20 +354,20 @@ export function useDodosGame() {
     .getByRole("button", { name: "Number 14", exact: true })
     .click();
   await expect(
-    purchasePanel.getByRole("button", { name: /Checking daily backing/ }),
+    purchasePanel.getByRole("button", { name: /Checking entry quote/ }),
   ).toBeDisabled();
   await expect(page.locator(".purchase-pool-quote dd")).toHaveCount(0);
   await page.selectOption("#draw-mode", String(now / 1000 + 32400));
   await expect(
-    purchasePanel.getByRole("button", { name: /Checking daily backing/ }),
+    purchasePanel.getByRole("button", { name: /Checking entry quote/ }),
   ).toBeDisabled();
-  await page.evaluate(() => window.__setTestLiabilityAvailable(false));
+  await page.evaluate(() => window.__setTestBankrollAvailable(false));
   await expect(
-    purchasePanel.getByRole("button", { name: /Daily backing unavailable/ }),
+    purchasePanel.getByRole("button", { name: /Prize rules unavailable/ }),
   ).toBeDisabled();
   await expect(page.locator("#referrals")).toHaveCount(0);
   await page.evaluate(() => {
-    window.__setTestLiabilityAvailable(true);
+    window.__setTestBankrollAvailable(true);
     window.__setTestCapacity({
       freeLamports: 3_000_000_047,
       reservedLamports: 4_000_000_148,
@@ -456,8 +476,12 @@ export function useDodosGame() {
   });
   await filters.getByRole("button", { name: /^Win\b/ }).click();
   await expect(
-    card("3").getByText("Prize ready", { exact: true }),
+    card("3").getByText("Waiting for treasury funding", { exact: true }),
   ).toBeVisible();
+  await expect(card("3").getByRole("button", { name: "Waiting for funding", exact: true })).toBeDisabled();
+  await expect(card("3").getByText(/Your prize remains unpaid/)).toBeVisible();
+  await expect(card("3").getByRole("link", { name: "Prize vault funding history", exact: true }))
+    .toHaveAttribute("href", `https://explorer.solana.com/address/${fixture.config.capacity.vaultAddress}?cluster=devnet`);
   await expect(
     card("5").getByText("Legacy ticket", { exact: true }),
   ).toBeVisible();
@@ -475,14 +499,25 @@ export function useDodosGame() {
   );
   await expect(page.locator("#draw-results .count-badge")).toHaveText("2");
   await expect(
-    card("3").getByRole("button", { name: "Claim prize", exact: true }),
-  ).toBeEnabled();
+    card("3").getByRole("button", { name: "Waiting for funding", exact: true }),
+  ).toBeDisabled();
   await expect(
     card("5").getByRole("button", { name: "Claim prize", exact: true }),
   ).toBeEnabled();
   await expect(page.getByRole("button", { name: /^Claim all/ })).toBeEnabled();
+  await card("5").getByRole("button", { name: "Claim prize", exact: true }).click();
+  await expect(card("5").getByRole("button", { name: "Claim prize", exact: true })).toBeEnabled();
   await page.evaluate(() => window.__setTestMetadataAvailable(true));
+  await page.evaluate(() => window.__setTestTicketFunding(true));
+  await expect(card("3").getByText("Prize ready", { exact: true })).toBeVisible();
+  await card("3").getByRole("button", { name: "Claim prize", exact: true }).click();
+  await expect(card("3").getByText("Prize ready", { exact: true })).toBeVisible();
+  await expect(card("3").getByText("Prize claimed", { exact: true })).toHaveCount(0);
+  await page.evaluate(() => { window.__testClaimConfirmed = true; });
+  await card("3").getByRole("button", { name: "Claim prize", exact: true }).click();
+  await expect(card("3")).toHaveCount(0);
   await filters.getByRole("button", { name: /^Done\b/ }).click();
+  await expect(card("3").getByText("Prize claimed", { exact: true })).toBeVisible();
   await expect(
     card("4").getByLabel("Outcome: refunded", { exact: true }),
   ).toHaveText("REFUNDED");
@@ -527,13 +562,13 @@ export function useDodosGame() {
     .getByText("Prizes, fees and blockchain history", { exact: true })
     .click();
   await expect(
-    guide.getByText(/Daily tickets in the same draw share backing/),
+    guide.getByText(/New daily and quick tickets do not reserve their full prize/),
   ).toBeVisible();
   await expect(
-    guide.getByText(/Quick draws remain independently backed/),
+    guide.getByText(/Older tickets retain their original protected prize backing/),
   ).toBeVisible();
   await expect(
-    guide.getByText(/first pooled daily entry additionally creates/),
+    guide.getByText(/first new entry also creates a shared refund account/),
   ).toBeVisible();
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1100 });
@@ -565,14 +600,24 @@ export function useDodosGame() {
     }),
   );
   await page.selectOption("#draw-mode", "quick");
+  await purchasePanel.getByRole("button", { name: "Number 7", exact: true }).click();
+  await purchasePanel.getByRole("button", { name: "Number 13", exact: true }).click();
+  await page.evaluate((drawTime) => window.__setTestPurchaseQuote({
+    bankroll: true, pooled: false, ticketVersion: 4, quick: true,
+    numbers: [7, 13], drawTime, entryLamports: 7_200_017, prizeLamports: 1_000_000_037,
+    reserveIncreaseLamports: 7_200_017, requiredBackingLamports: 0, freeLamports: 0, canPurchase: true,
+    riskRentLamports: 1_238_893, ledgerRentLamports: 1_238_893, drawRentLamports: 2_984_581,
+    ticketRentLamports: 1_000_003, accountRentLamports: 5_223_477,
+  }), now / 1000 + 60);
   await expect(
-    page.getByRole("button", { name: /Prize reserves full/ }),
-  ).toBeDisabled();
+    purchasePanel.getByRole("button", { name: "Buy ticket", exact: false }),
+  ).toBeEnabled();
   await expect(
-    page.getByText(
-      /Multiple tickets per draw are allowed; this pause protects every accepted prize/,
-    ),
+    purchasePanel.getByText(/Your fixed match prize is not reserved at purchase/),
   ).toBeVisible();
+  await expect(purchasePanel.getByText(/claim can wait for the operator/)).toBeVisible();
+  await expect(purchasePanel.getByText(/Prize reserves are full/)).toHaveCount(0);
+  await expect(purchasePanel.locator(".purchase-pool-quote dd")).toHaveText(["0 SOL", "0.005223477 SOL"]);
   assert.deepEqual(await page.evaluate(() => window.__oracleUiActions), [
     "quoteAll",
     "publishAll",
@@ -580,6 +625,9 @@ export function useDodosGame() {
     "refresh",
     "complete:3",
     "refund:4",
+    "claim:5",
+    "claim:3",
+    "claim:3",
   ]);
   assert.deepEqual(errors, []);
   assert.equal(requests.includes("sendTransaction"), false);
@@ -611,8 +659,12 @@ export function useDodosGame() {
       verifiedClaimsSurviveMetadataFailure: true,
       actualProofLinks: true,
       liveMetadataPrices: true,
-      reserveCapacityExplained: true,
-      pooledDailySelectionQuote: true,
+      claimFundedAdmissionWithoutTreasuryCapital: true,
+      fundingWaitDisclosedBeforePurchase: true,
+      unfundedWinRemainsUnpaid: true,
+      refillEnablesSameTicket: true,
+      paidOnlyAfterConfirmedClaim: true,
+      dailyAndQuickSelectionQuotes: true,
       actualFirstDrawAccountRent: true,
       stalePairAndDrawQuotesRejected: true,
       widths: [320, 390, 768, 1440],

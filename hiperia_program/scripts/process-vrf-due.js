@@ -106,7 +106,7 @@ export function ticketRecord(
   const padding = Buffer.from(account.padding);
   assert.ok(
     padding.length === 32 &&
-      [2, 3].includes(padding[0]) &&
+      [2, 3, 4].includes(padding[0]) &&
       padding[9] <= 1 &&
       padding.subarray(10).every((byte) => byte === 0),
     "The ticket prize snapshot could not be verified.",
@@ -125,6 +125,7 @@ export function ticketRecord(
     refunded: padding[9] === 1,
     reserveVersion: padding[0],
     pooled: padding[0] === 3,
+    bankroll: padding[0] === 4,
     payoutLamports: payoutLamports.toString(),
     paidLamports: account.paidLamports.toString(),
     sourceProgram: programId.toString(),
@@ -304,10 +305,13 @@ export async function processDraws({
     const pooledTickets = related.filter(
       (ticket) => ticket.reserveVersion === 3 && !ticket.settled,
     );
+    const bankrollTickets = related.filter(
+      (ticket) => ticket.reserveVersion === 4 && !ticket.settled,
+    );
     const legacyLiability = related.reduce(
       (total, ticket) =>
         total +
-        (ticket.settled || ticket.reserveVersion === 3
+        (ticket.settled || ticket.reserveVersion !== 2
           ? 0n
           : BigInt(ticket.payoutLamports)),
       0n,
@@ -324,14 +328,31 @@ export async function processDraws({
     const pooledReserved = risk
       ? BigInt(risk.reservedLamports.toString())
       : null;
+    let bankroll = null;
+    let bankrollReadFailed = false;
+    if (bankrollTickets.length) {
+      try {
+        bankroll = await client.bankroll.read(draw.drawTime);
+      } catch {
+        bankrollReadFailed = true;
+      }
+    }
+    const bankrollPendingEntries = bankroll
+      ? BigInt(bankroll.pendingEntryLamports.toString())
+      : null;
     log({
       drawTime: draw.drawTime,
       phase: draw.status,
       tickets: related.length,
       unsettledLiabilityLamports:
-        pooledTickets.length && pooledReserved === null
+        (pooledTickets.length && pooledReserved === null) ||
+        (bankrollTickets.length && bankrollPendingEntries === null)
           ? null
-          : (legacyLiability + (pooledReserved ?? 0n)).toString(),
+          : (
+              legacyLiability +
+              (pooledReserved ?? 0n) +
+              (bankrollPendingEntries ?? 0n)
+            ).toString(),
       legacyFullPrizeLiabilityLamports: legacyLiability.toString(),
       pooledUnsettledTickets: pooledTickets.length,
       pooledReservedLiabilityLamports: pooledReserved?.toString() ?? null,
@@ -344,6 +365,18 @@ export async function processDraws({
         : "not-applicable",
       pooledReconciliationRequired:
         draw.status === "final" && risk?.phase === 0,
+      bankrollUnsettledTickets: bankrollTickets.length,
+      bankrollPendingEntryLamports: bankrollPendingEntries?.toString() ?? null,
+      bankrollPrizesReserved: false,
+      bankrollBackingStatus: bankrollTickets.length
+        ? bankrollReadFailed
+          ? "unavailable"
+          : bankroll
+            ? "verified"
+            : "missing"
+        : "not-applicable",
+      bankrollReconciliationRequired:
+        draw.status === "final" && bankroll?.phase === 0,
       mode: options.execute ? "execute" : "dry-run",
     });
     if (
@@ -475,6 +508,46 @@ export async function processDraws({
           drawTime: draw.drawTime,
           pooledReconciliationSkipped:
             "backing account could not be verified; no standalone transaction was sent",
+        });
+      }
+    }
+    if (bankrollTickets.length) {
+      try {
+        bankroll = await client.bankroll.read(draw.drawTime);
+      } catch {
+        bankroll = null;
+      }
+      if (bankroll?.phase === 0) {
+        receipt.context = {
+          kind: "reconcile-bankroll-entries",
+          drawTime: draw.drawTime,
+        };
+        receipt.assertWritable();
+        const instruction = await client.reconcileBankrollDrawInstruction(
+          draw.drawTime,
+        );
+        receipt.assertWritable();
+        const signature = await client.program.provider.sendAndConfirm(
+          new Transaction().add(instruction),
+          [],
+          {
+            commitment: "confirmed",
+            preflightCommitment: "confirmed",
+            maxRetries: 0,
+          },
+        );
+        receipt.assertResolved();
+        reconciledDraws += 1;
+        log({
+          drawTime: draw.drawTime,
+          bankrollEntriesReconciled: true,
+          signature,
+        });
+      } else if (!bankroll) {
+        log({
+          drawTime: draw.drawTime,
+          bankrollReconciliationSkipped:
+            "entry ledger could not be verified; no standalone transaction was sent",
         });
       }
     }

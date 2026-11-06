@@ -61,6 +61,22 @@ function fixture() {
   return { mux, primary, legacy, ticket };
 }
 
+test("a wallet change between source programs retains the already confirmed legacy payout", async () => {
+  const { mux, primary, legacy, ticket } = fixture();
+  const tickets = [ticket(1, { sourceProgram: PROGRAM_ID, legacy: true }),
+    ticket(2, { sourceProgram: VRF_PROGRAM_ID, legacy: false })];
+  let checks = 0;
+  await assert.rejects(mux.claimAll({ tickets, assertActive: () => {
+    if (++checks === 2) throw new Error("Wallet changed before public claims");
+  } }), (failure) => {
+    assert.equal(failure.confirmedSettlements, 1);
+    assert.deepEqual(failure.confirmedSignatures, [`${PROGRAM_ID}-confirmed`]);
+    return true;
+  });
+  assert.equal(legacy.calls.length, 1);
+  assert.equal(primary.calls.length, 0);
+});
+
 test("the VRF factory requires an explicit public Devnet build profile", () => {
   const options = {
     connection: new Connection("http://127.0.0.1:8899"),

@@ -23,6 +23,24 @@ function result(numbers = [2, 22], isPublished = true) {
   return { numbers, isPublished };
 }
 
+test("unfunded and unknown-funding v4 winners remain in Win until an actual settlement", () => {
+  const win = ticket({ reserveVersion: 4, bankroll: true, result: result() });
+  for (const funding of [
+    { claimFundingVerified: false, claimFunded: false },
+    { claimFundingVerified: true, claimFunded: false },
+  ]) {
+    const unpaid = { ...win, ...funding };
+    assert.equal(getTicketState(unpaid, now).group, "win");
+    assert.equal(getTicketState(unpaid, now).claimable, false);
+    assert.equal(getClaimableTickets([unpaid], now).length, 0);
+  }
+  const funded = { ...win, claimFundingVerified: true, claimFunded: true };
+  assert.equal(getTicketState(funded, now).claimable, true);
+  assert.equal(getTicketState({ ...funded, settled: true }, now).group, "done");
+  for (const reserveVersion of [2, 3])
+    assert.equal(getTicketState({ ...win, bankroll: false, reserveVersion, claimFundingVerified: false }, now).claimable, true);
+});
+
 test("ticket filters separate upcoming, awaiting, unclaimed wins, losses, and settled tickets", () => {
   const tickets = [
     ticket({ id: "upcoming", drawTime: now + 1 }),

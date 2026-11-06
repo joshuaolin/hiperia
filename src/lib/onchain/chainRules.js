@@ -284,3 +284,21 @@ function decodeLiabilityRules(program, response) {
 export function loadLiabilityRules(options) {
   return loadMetadata({ ...options, method: "getLiabilityRules", decode: decodeLiabilityRules });
 }
+
+function decodeBankrollRules(program, response) {
+  const decoded = decodeReturnData(program, response, 9, "bankrollRules");
+  const bytes = Buffer.from(response.value.returnData.data[0], "base64");
+  if (
+    program.programId.toBase58() !== VRF_PROGRAM_ID ||
+    decoded.revision !== 1 || decoded.dailyEnabled !== true ||
+    decoded.quickEnabled !== true || decoded.entryRefundsReserved !== true ||
+    decoded.prizeReservedAtPurchase !== false || decoded.claimRequiresFunding !== true ||
+    decoded.ticketVersion !== 4 || decoded.ledgerAccountSpace !== 50 ||
+    ![1, 2, 3, 5].every((index) => bytes[index] === 1) || bytes[4] !== 0
+  ) throw unsupported();
+  return Object.freeze(decoded);
+}
+
+export function loadBankrollRules(options) {
+  return loadMetadata({ ...options, method: "getBankrollRules", decode: decodeBankrollRules });
+}

@@ -296,6 +296,8 @@ test("VRF readonly metadata requires its own program, config, discriminator and 
     ["getrules", 56],
     ["getaccessrules", 3],
     ["getrandomnessrules", 39],
+    ["getliabilityrules", 7],
+    ["getbankrollrules", 9],
   ]) {
     const data = rulesDiscriminator(method, vrfIdl);
     const simulation = rulesSimulation({ program, data });
@@ -349,22 +351,13 @@ test("VRF readonly metadata requires its own program, config, discriminator and 
       );
     }
   }
-  for (const name of [
-    "initialize",
-    "buy_ticket",
-    "request_draw",
-    "finalize_draw",
-    "reclaim_oracle_funding",
-    "release_losing_ticket",
-    "settle_ticket",
-    "refund_ticket",
-  ])
+  for (const { name } of vrfIdl.instructions.filter(({ name }) => !name.startsWith("get_")))
     assert.throws(() =>
       validateRpcRequest(
         rulesSimulation({ program, data: appInstruction(vrfIdl, name).data }),
       ),
     );
-  for (const method of ["getaccessrules", "getrandomnessrules"])
+  for (const method of ["getaccessrules", "getrandomnessrules", "getliabilityrules", "getbankrollrules"])
     assert.throws(() =>
       validateRpcRequest(
         rulesSimulation({ data: rulesDiscriminator(method, vrfIdl) }),

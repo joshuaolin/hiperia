@@ -411,7 +411,7 @@ test("pooled ticket scans preserve their v3 settlement route and immutable prize
   assert.equal(pooled.pooled, true);
   assert.equal(pooled.payoutLamports, "2000000000");
   assert.equal(pooled.user, owner.publicKey.toBase58());
-  const invalid = account(2, [2, 22], 100, 4);
+  const invalid = account(2, [2, 22], 100, 5);
   assert.throws(() => ticketRecord(record(invalid)), /snapshot/);
 });
 
@@ -549,5 +549,163 @@ test("the transaction bound also blocks a dedicated pooled reconciliation", asyn
   };
   await assert.rejects(processDraws(fixture.input), /transaction limit/);
   assert.equal(checks, 1);
+  assert.deepEqual(fixture.calls, []);
+});
+
+test("bankroll scans retain the v4 route without treating fixed prize snapshots as reserves", () => {
+  const bankroll = ticketRecord(record(account(1, [2, 22], 100, 4)));
+  assert.equal(bankroll.reserveVersion, 4);
+  assert.equal(bankroll.bankroll, true);
+  assert.equal(bankroll.pooled, false);
+  assert.equal(bankroll.payoutLamports, "2000000000");
+  assert.equal(bankroll.paidLamports, "6250000");
+  assert.equal(bankroll.user, owner.publicKey.toBase58());
+});
+
+test("bankroll dry-run reports actual entry holds alongside protected old reserves without signing", async () => {
+  const fixture = setup({
+    records: [
+      account(1),
+      account(2, [22, 2], 100, 3),
+      account(3, [2, 22], 100, 4),
+      account(4, [22, 2], 100, 4),
+    ],
+  });
+  fixture.client.drawRisk = {
+    read: async () => ({ phase: 0, reservedLamports: new BN(2_000_000_000) }),
+  };
+  fixture.client.bankroll = {
+    read: async () => ({ phase: 0, pendingEntryLamports: new BN(12_500_000) }),
+  };
+  const summary = await processDraws(fixture.input);
+  assert.deepEqual(fixture.calls, []);
+  assert.equal(fixture.logs[0].legacyFullPrizeLiabilityLamports, "2000000000");
+  assert.equal(fixture.logs[0].pooledReservedLiabilityLamports, "2000000000");
+  assert.equal(fixture.logs[0].bankrollPendingEntryLamports, "12500000");
+  assert.equal(fixture.logs[0].unsettledLiabilityLamports, "4012500000");
+  assert.equal(fixture.logs[0].bankrollUnsettledTickets, 2);
+  assert.equal(fixture.logs[0].bankrollPrizesReserved, false);
+  assert.equal(fixture.logs[0].bankrollBackingStatus, "verified");
+  assert.equal(fixture.logs[0].bankrollReconciliationRequired, true);
+  assert.equal(summary.reconciledDraws, 0);
+  assert.equal(summary.preservedWins, 1);
+});
+
+function bankrollOperatorFixture({
+  records = [account(1, [2, 22], 100, 4)],
+  phase = 0,
+} = {}) {
+  const fixture = setup({
+    records,
+    args: ["--execute", "--wallet", "explicit.json"],
+  });
+  const ledger = {
+    phase,
+    pendingEntryLamports: new BN(phase === 0 ? records.length * 6_250_000 : 0),
+  };
+  fixture.client.bankroll = { read: async () => ({ ...ledger }) };
+  fixture.client.reconcileBankrollDrawInstruction = async (drawTime) => {
+    assert.equal(drawTime, 100);
+    return new TransactionInstruction({
+      programId,
+      keys: [],
+      data: Buffer.from([4]),
+    });
+  };
+  fixture.client.program.provider = {
+    sendAndConfirm: async (transaction, signers, options) => {
+      assert.equal(transaction.instructions.length, 1);
+      assert.deepEqual(signers, []);
+      assert.equal(options.maxRetries, 0);
+      assert.equal(options.commitment, "confirmed");
+      assert.equal(options.preflightCommitment, "confirmed");
+      assert.equal(
+        fixture.input.receipt.context.kind,
+        "reconcile-bankroll-entries",
+      );
+      fixture.calls.push("reconcile-bankroll");
+      ledger.phase = 1;
+      ledger.pendingEntryLamports = new BN(0);
+      return "confirmed-bankroll-reconciliation";
+    },
+  };
+  return fixture;
+}
+
+test("an explicit bankroll reconciliation releases entry holds while preserving all unpaid winners", async () => {
+  const fixture = bankrollOperatorFixture();
+  const summary = await processDraws(fixture.input);
+  assert.deepEqual(fixture.calls, ["reconcile-bankroll"]);
+  assert.equal(summary.reconciledDraws, 1);
+  assert.equal(summary.preservedWins, 1);
+  assert.equal(summary.settledLosses, 0);
+  assert.equal(fixture.logs[1].bankrollEntriesReconciled, true);
+  assert.equal(fixture.logs[1].signature, "confirmed-bankroll-reconciliation");
+  const repeated = await processDraws(fixture.input);
+  assert.equal(repeated.reconciledDraws, 0);
+  assert.equal(repeated.preservedWins, 1);
+  assert.deepEqual(fixture.calls, ["reconcile-bankroll"]);
+});
+
+test("bankroll loss cleanup retains its v4 handler hint after a fresh canonical scan", async () => {
+  const fixture = bankrollOperatorFixture({
+    records: [account(1, [22, 2], 100, 4), account(2, [2, 22], 100, 4)],
+  });
+  fixture.client.settleBatch = async (tickets) => {
+    assert.equal(tickets.length, 1);
+    assert.equal(tickets[0].reserveVersion, 4);
+    assert.equal(tickets[0].bankroll, true);
+    assert.equal(tickets[0].pooled, false);
+    fixture.calls.push({
+      releaseBankrollLosses: tickets.map((ticket) => ticket.id),
+    });
+    return { settled: tickets.length, signatures: ["confirmed-bankroll-loss"] };
+  };
+  const summary = await processDraws(fixture.input);
+  assert.deepEqual(fixture.calls, [
+    "reconcile-bankroll",
+    { releaseBankrollLosses: ["1"] },
+  ]);
+  assert.equal(summary.settledLosses, 1);
+  assert.equal(summary.preservedWins, 1);
+});
+
+test("unavailable bankroll ledgers report unknown holds without substituting prize sums", async () => {
+  const fixture = bankrollOperatorFixture();
+  fixture.client.bankroll.read = async () => {
+    throw new Error("RPC unavailable");
+  };
+  const summary = await processDraws(fixture.input);
+  assert.equal(fixture.logs[0].unsettledLiabilityLamports, null);
+  assert.equal(fixture.logs[0].bankrollPendingEntryLamports, null);
+  assert.equal(fixture.logs[0].bankrollBackingStatus, "unavailable");
+  assert.equal(fixture.logs[0].legacyFullPrizeLiabilityLamports, "0");
+  assert.equal(summary.reconciledDraws, 0);
+  assert.equal(summary.preservedWins, 1);
+  assert.deepEqual(fixture.calls, []);
+  assert.match(
+    fixture.logs[1].bankrollReconciliationSkipped,
+    /no standalone transaction/,
+  );
+});
+
+test("a failed bankroll reconciliation stops all loss cleanup and later draws without resubmission", async () => {
+  const fixture = bankrollOperatorFixture({
+    records: [account(1, [22, 2], 100, 4), account(2, [22, 2], 101, 4)],
+  });
+  fixture.client.program.provider.sendAndConfirm = async () => {
+    fixture.calls.push("uncertain-bankroll-reconcile");
+    throw new Error("Bankroll reconciliation confirmation is uncertain.");
+  };
+  await assert.rejects(processDraws(fixture.input), /uncertain/);
+  assert.deepEqual(fixture.calls, ["uncertain-bankroll-reconcile"]);
+});
+
+test("the transaction bound applies before a bankroll reconciliation is built or signed", async () => {
+  const fixture = bankrollOperatorFixture();
+  fixture.input.receipt.assertWritable = () => {
+    throw new Error("The transaction limit was reached.");
+  };
+  await assert.rejects(processDraws(fixture.input), /transaction limit/);
   assert.deepEqual(fixture.calls, []);
 });

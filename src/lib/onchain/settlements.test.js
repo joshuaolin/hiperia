@@ -87,3 +87,28 @@ test("changing wallets before signing stops settlement", async () => {
   await assert.rejects(sendSettlementBatches(options), /Wallet changed/);
   assert.deepEqual(batches, []);
 });
+
+test("confirmed progress survives later funding reads, instruction builds and wallet changes", async () => {
+  for (const stage of ["read", "instruction", "wallet"]) {
+    const { options, batches } = fixture();
+    options.batchSize = 1;
+    const instructionFor = options.instructionFor;
+    options.pendingTickets = async (batch) => {
+      if (stage === "read" && batches.length === 1) throw new Error("Funding RPC unavailable");
+      return batch;
+    };
+    options.instructionFor = async (ticket) => {
+      if (stage === "instruction" && batches.length === 1) throw new Error("Account read failed");
+      return instructionFor(ticket);
+    };
+    options.assertActive = () => {
+      if (stage === "wallet" && batches.length === 1) throw new Error("Wallet changed");
+    };
+    await assert.rejects(sendSettlementBatches(options), (failure) => {
+      assert.equal(failure.confirmedSettlements, 1);
+      assert.deepEqual(failure.confirmedSignatures, ["signature-1"]);
+      return true;
+    });
+    assert.deepEqual(batches, [1]);
+  }
+});

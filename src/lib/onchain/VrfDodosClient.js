@@ -9,10 +9,11 @@ import {
 } from "@solana/web3.js";
 import vrfIdl from "../../idl/hiperia_vrf.json" with { type: "json" };
 import { DodosClient, UAT_ADMIN } from "./DodosClient.js";
-import { loadRandomnessRules, loadLiabilityRules } from "./chainRules.js";
+import { loadRandomnessRules, loadLiabilityRules, loadBankrollRules } from "./chainRules.js";
 import {
   getDrawPda,
   getDrawRiskPda,
+  getBankrollDrawPda,
   getOracleClientPda,
   getOracleRequestPda,
   getTicketPda,
@@ -26,6 +27,8 @@ import { OracleClient, deriveOracleSeed } from "./OracleClient.js";
 import { winningNumbersFromRandomness } from "./vrfRandomness.js";
 import { DrawRiskClient } from "./DrawRiskClient.js";
 import { isDailyDrawTime } from "./time.js";
+import { BankrollClient } from "./BankrollClient.js";
+import { sendSettlementBatches } from "./settlements.js";
 
 const emptyKey = SystemProgram.programId.toBase58();
 
@@ -100,6 +103,8 @@ export class VrfDodosClient extends DodosClient {
     this.randomnessRulesLoader =
       options.randomnessRulesLoader ?? loadRandomnessRules;
     this.liabilityRulesLoader = options.liabilityRulesLoader ?? loadLiabilityRules;
+    this.bankrollRulesLoader = options.bankrollRulesLoader ?? loadBankrollRules;
+    this.bankroll = new BankrollClient(this);
     this.drawRisk = new DrawRiskClient(this);
     this.oracle =
       options.oracle ?? new OracleClient({ connection: this.connection });
@@ -133,10 +138,11 @@ export class VrfDodosClient extends DodosClient {
   async getConfig() {
     const config = await super.getConfig();
     if (!config) return null;
-    const [randomnessRules, capacity, liabilityRules] = await Promise.all([
+    const [randomnessRules, capacity, liabilityRules, bankrollRules] = await Promise.all([
       this.getRandomnessRules(),
       this.getCapacity(config),
       this.getLiabilityRules().catch(() => null),
+      this.getBankrollRules().catch(() => null),
     ]);
     if (
       config.rulesRevision !== 6 ||
@@ -147,8 +153,10 @@ export class VrfDodosClient extends DodosClient {
     return {
       ...config,
       randomnessRules,
-      capacity,
+      capacity: { ...capacity, dailySlots: bankrollRules ? null : capacity.dailySlots,
+        quickSlots: bankrollRules ? null : capacity.quickSlots },
       liabilityRules,
+      bankrollRules,
       permissionlessSettlement: true,
       randomnessMode: "orao-vrf",
       randomnessVerified: true,
@@ -162,30 +170,35 @@ export class VrfDodosClient extends DodosClient {
       configAddress: this.configAddress, payer: new PublicKey(UAT_ADMIN), now: this.now, fresh });
   }
 
+  getBankrollRules({ fresh = false } = {}) {
+    return this.bankrollRulesLoader({ connection: this.connection, program: this.program,
+      configAddress: this.configAddress, payer: new PublicKey(UAT_ADMIN), now: this.now, fresh });
+  }
+
   async recoverPendingPurchase() {
     const pending = this.getPendingPurchase();
     if (!pending) return null;
     const account = await this.getTicket(pending.id);
     if (!account) return null;
     const version = account.padding[0];
-    if (![2, 3].includes(version)) throw new Error("The confirmed ticket's backing version could not be verified.");
+    if (![2, 3, 4].includes(version)) throw new Error("The confirmed ticket's backing version could not be verified.");
     const receipt = { id: pending.id, numbers: Array.from(account.numbers),
       drawTime: Number(account.drawTime.toString()), settled: account.settled,
-      signature: null, recovered: true, reserveVersion: version, pooled: version === 3,
+      signature: null, recovered: true, reserveVersion: version, pooled: version === 3, bankroll: version === 4,
       sourceProgram: this.program.programId.toBase58(), legacy: false };
     this.completePurchase();
     return receipt;
   }
 
   async getPurchaseQuote(numbers, { drawTime, config } = {}) {
-    if (!isDailyDrawTime(Number(drawTime))) return null;
     if (!validNumbers(numbers)) throw new Error("Choose two different numbers first.");
     const active = config ?? await this.getConfig();
     if (!active?.randomnessVerified) throw new Error("Wait for the verified draw rules.");
-    return this.drawRisk.quote(numbers, { drawTime, config: active });
+    if (!active.bankrollRules) throw new Error("The claim-funded prize rules could not be verified. New purchases are paused.");
+    return this.bankroll.quote(numbers, { drawTime, config: active, quick: !isDailyDrawTime(Number(drawTime)) });
   }
 
-  async getCapacity(config) {
+  async getCapacity(config = {}) {
     const account = await this.connection.getAccountInfo(
       this.vaultAddress,
       "confirmed",
@@ -214,10 +227,12 @@ export class VrfDodosClient extends DodosClient {
       vaultLamports - rentLamports - reservedLamports,
     );
     const slots = (prize, price) => {
+      if (prize == null || price == null) return null;
       const backing = amount(prize) - amount(price);
       return backing > 0 ? Math.floor(freeLamports / backing) : null;
     };
     return {
+      vaultAddress: this.vaultAddress.toBase58(),
       vaultLamports,
       balanceLamports: vaultLamports,
       reservedLamports,
@@ -350,12 +365,12 @@ export class VrfDodosClient extends DodosClient {
       config?.randomnessRules ??
       (await this.getRandomnessRules().catch(() => null));
     const now = Math.floor(this.now() / 1000);
-    return entries
+    const tickets = entries
       .map(({ publicKey, account }) => {
         const drawTime = amount(account.drawTime);
         const draw = draws.get(account.drawTime.toString()) ?? null;
         const snapshot = Buffer.from(account.padding);
-        if (![2, 3].includes(snapshot[0]) || snapshot[9] > 1 || snapshot.subarray(10).some((byte) => byte !== 0))
+        if (![2, 3, 4].includes(snapshot[0]) || snapshot[9] > 1 || snapshot.subarray(10).some((byte) => byte !== 0))
           throw new Error("The ticket prize snapshot could not be verified.");
         return {
           id: account.nonce.toString(),
@@ -367,6 +382,7 @@ export class VrfDodosClient extends DodosClient {
           refunded: snapshot[9] === 1,
           reserveVersion: snapshot[0],
           pooled: snapshot[0] === 3,
+          bankroll: snapshot[0] === 4,
           paidLamports: amount(account.paidLamports),
           payoutLamports: amount(snapshot.readBigUInt64LE(1)),
           sourceProgram: this.program.programId.toBase58(),
@@ -384,6 +400,12 @@ export class VrfDodosClient extends DodosClient {
         };
       })
       .sort((first, second) => second.drawTime - first.drawTime);
+    return Promise.all(tickets.map(async (ticket) => {
+      if (!ticket.bankroll || ticket.settled || !ticket.result?.isPublished ||
+        !ticket.numbers.every((number, index) => number === ticket.result.numbers[index])) return ticket;
+      try { return { ...ticket, ...await this.bankroll.funding(ticket) }; }
+      catch { return { ...ticket, claimFundingVerified: false, claimFunded: false }; }
+    }));
   }
 
   async getResults() {
@@ -422,12 +444,12 @@ export class VrfDodosClient extends DodosClient {
       throw new Error(
         "Wait for the verified public VRF game rules before purchasing.",
       );
-    const pooled = isDailyDrawTime(Number(drawTime));
-    if (pooled) {
-      const quote = await this.getPurchaseQuote(selection, { drawTime, config });
-      if (!quote?.canPurchase)
-        throw new Error("This combination needs more prize backing. Choose another combination or draw.");
-    }
+    const bankrollRules = await this.getBankrollRules({ fresh: true });
+    if (!bankrollRules || bankrollRules.ticketVersion !== 4)
+      throw new Error("The claim-funded prize rules could not be verified. No purchase was sent.");
+    const quote = await this.getPurchaseQuote(selection, { drawTime, config: { ...config, bankrollRules } });
+    if (!quote?.bankroll || !quote.canPurchase)
+      throw new Error("Refresh the entry and account rent quote before buying.");
     this.rememberPurchase({
       id: String(nonce),
       numbers: selection,
@@ -436,8 +458,7 @@ export class VrfDodosClient extends DodosClient {
     try {
       await this.assertDevnet();
       options.assertActive?.();
-      const method = pooled ? "buyPooledTicket" : "buyTicket";
-      const signature = await this.program.methods[method](new BN(String(nonce)), new BN(String(drawTime)), selection)
+      const signature = await this.program.methods.buyBankrollTicket(new BN(String(nonce)), new BN(String(drawTime)), selection)
         .accountsStrict({
           config: this.configAddress,
           vault: this.vaultAddress,
@@ -449,7 +470,7 @@ export class VrfDodosClient extends DodosClient {
           user: this.wallet.publicKey,
           systemProgram: SystemProgram.programId,
           draw: getDrawPda(drawTime, this.program.programId)[0],
-          ...(pooled ? { drawRisk: getDrawRiskPda(drawTime, this.program.programId)[0] } : {}),
+          bankrollDraw: getBankrollDrawPda(drawTime, this.program.programId)[0],
         })
         .rpc({ maxRetries: 0 });
       this.completePurchase();
@@ -459,8 +480,9 @@ export class VrfDodosClient extends DodosClient {
         drawTime: Number(drawTime),
         signature,
         settled: false,
-        reserveVersion: pooled ? 3 : 2,
-        pooled,
+        reserveVersion: 4,
+        pooled: false,
+        bankroll: true,
         sourceProgram: this.program.programId.toBase58(),
         legacy: false,
       };
@@ -643,6 +665,18 @@ export class VrfDodosClient extends DodosClient {
         })
         .instruction(),
     );
+    let bankrollReconcileIncluded = false;
+    try {
+      const ledger = await this.bankroll.read(draw.drawTime);
+      if (ledger && ledger.phase === 0) {
+        transaction.add(await this.reconcileBankrollDrawInstruction(draw.drawTime));
+        if (transaction.instructions.length <= 8 && transactionPacketBytes(transaction, payer) <= 1232)
+          bankrollReconcileIncluded = true;
+        else transaction.instructions.pop();
+      }
+    } catch {
+      bankrollReconcileIncluded = false;
+    }
     let pooledReconcileIncluded = false;
     try {
       const risk = await this.drawRisk.read(draw.drawTime);
@@ -709,7 +743,7 @@ export class VrfDodosClient extends DodosClient {
           account.drawTime.toString() !== String(draw.drawTime) ||
           account.settled !== false ||
           snapshot.length !== 32 ||
-          ![2, 3].includes(snapshot[0]) ||
+          ![2, 3, 4].includes(snapshot[0]) ||
           snapshot[9] !== 0 ||
           snapshot.subarray(10).some((byte) => byte !== 0) ||
           snapshot.readBigUInt64LE(1) === 0n ||
@@ -750,6 +784,7 @@ export class VrfDodosClient extends DodosClient {
       cleanupSkipped,
       reclaimSkipped,
       pooledReconcileIncluded,
+      bankrollReconcileIncluded,
       packetBytes: transactionPacketBytes(transaction, payer),
       winningNumbers,
     };
@@ -845,6 +880,7 @@ export class VrfDodosClient extends DodosClient {
       settled: releasedLosses,
       refreshWarning,
       pooledReconciled: plan.pooledReconcileIncluded,
+      bankrollReconciled: plan.bankrollReconcileIncluded,
     };
   }
 
@@ -971,24 +1007,39 @@ export class VrfDodosClient extends DodosClient {
         drawRisk: getDrawRiskPda(drawTime, this.program.programId)[0] }).instruction();
   }
 
+  reconcileBankrollDrawInstruction(drawTime) {
+    return this.program.methods.reconcileBankrollDraw(new BN(String(drawTime)))
+      .accountsStrict({ vault: this.vaultAddress,
+        draw: getDrawPda(drawTime, this.program.programId)[0],
+        bankrollDraw: getBankrollDrawPda(drawTime, this.program.programId)[0] }).instruction();
+  }
+
   async ticketReserveVersion(ticket) {
-    if ([2, 3].includes(ticket.reserveVersion)) return ticket.reserveVersion;
+    if ([2, 3, 4].includes(ticket.reserveVersion)) return ticket.reserveVersion;
+    if (ticket.bankroll === true) return 4;
     if (ticket.pooled === true) return 3;
     const owner = new PublicKey(ticket.user ?? this.wallet.publicKey);
     const account = await this.program.account.ticket.fetchNullable(
       getTicketPda(owner, ticket.id, this.program.programId)[0],
     ).catch(() => null);
-    return account?.padding?.[0] === 3 ? 3 : 2;
+    if (![2, 3, 4].includes(account?.padding?.[0]))
+      throw new Error("This ticket's settlement version could not be verified. Refresh before claiming.");
+    return account.padding[0];
   }
 
   async settleInstruction(ticket) {
+    const version = await this.ticketReserveVersion(ticket);
     const result = await this.getResult(ticket.drawTime);
     if (
       result?.isPublished &&
       validNumbers(ticket.numbers) &&
       ticket.numbers.some((number, index) => number !== result.numbers[index])
-    )
-      return this.releaseLosingInstruction(ticket);
+    ) return this.releaseLosingInstruction(ticket);
+    if (version === 4) {
+      const { vault, ticket: address, draw, user } = this.settlementAccounts(ticket);
+      return this.program.methods.settleBankrollTicket().accountsStrict({ vault, ticket: address, draw, user,
+        bankrollDraw: getBankrollDrawPda(ticket.drawTime, this.program.programId)[0] }).instruction();
+    }
     const pooled = await this.ticketReserveVersion(ticket) === 3;
     return this.program.methods[pooled ? "settlePooledTicket" : "settleTicket"]()
       .accountsStrict({ ...this.settlementAccounts(ticket),
@@ -997,6 +1048,11 @@ export class VrfDodosClient extends DodosClient {
   }
 
   async releaseLosingInstruction(ticket) {
+    if (await this.ticketReserveVersion(ticket) === 4) {
+      const { vault, ticket: address, draw } = this.settlementAccounts(ticket);
+      return this.program.methods.releaseBankrollLosingTicket().accountsStrict({ vault, ticket: address, draw,
+        bankrollDraw: getBankrollDrawPda(ticket.drawTime, this.program.programId)[0] }).instruction();
+    }
     const {
       config,
       vault,
@@ -1030,6 +1086,16 @@ export class VrfDodosClient extends DodosClient {
 
   async settleTicket(ticket, options = {}) {
     this.requireSigner();
+    if (await this.ticketReserveVersion(ticket) === 4) {
+      const result = await this.getResult(ticket.drawTime);
+      const loss = result?.isPublished && validNumbers(ticket.numbers) &&
+        ticket.numbers.some((number, index) => number !== result.numbers[index]);
+      if (!loss) {
+        const funding = await this.getClaimFunding(ticket);
+        if (!funding.claimFunded)
+          throw new Error("Waiting for treasury funding. Your winning ticket remains unpaid and claimable after the prize vault is refilled. No transaction was sent.");
+      }
+    }
     const transaction = new Transaction().add(
       await this.settleInstruction(ticket),
     );
@@ -1044,7 +1110,59 @@ export class VrfDodosClient extends DodosClient {
 
   async settleBatch(tickets, options = {}) {
     await this.assertDevnet();
-    return super.settleBatch(tickets, options);
+    const versions = await Promise.all(tickets.map(async (ticket) => {
+      const reserveVersion = await this.ticketReserveVersion(ticket);
+      const result = reserveVersion === 4 ? await this.getResult(ticket.drawTime) : null;
+      const loss = reserveVersion === 4 && result?.isPublished && validNumbers(ticket.numbers) &&
+        ticket.numbers.some((number, index) => number !== result.numbers[index]);
+      return { ...ticket, reserveVersion, bankrollLoss: Boolean(loss) };
+    }));
+    const protectedTickets = versions.filter((ticket) => ticket.reserveVersion !== 4 || ticket.bankrollLoss);
+    const progress = protectedTickets.length ? await super.settleBatch(protectedTickets, options) : { settled: 0, signatures: [] };
+    let waiting = 0;
+    try {
+      const result = await sendSettlementBatches({ tickets: versions.filter((ticket) => ticket.reserveVersion === 4 && !ticket.bankrollLoss),
+        batchSize: 1, assertActive: options.assertActive,
+        pendingTickets: async ([ticket]) => {
+          const funding = await this.getClaimFunding(ticket, { allowSettled: true });
+          if (funding.settled) return [];
+          if (!funding.claimFunded) { waiting++; return []; }
+          return [ticket];
+        },
+        instructionFor: (ticket) => this.settleInstruction(ticket),
+        send: (transaction) => this.program.provider.sendAndConfirm(transaction, [], {
+          commitment: "confirmed", preflightCommitment: "confirmed", maxRetries: 0,
+        }),
+      });
+      return { settled: progress.settled + result.settled, signatures: [...progress.signatures, ...result.signatures], waiting };
+    } catch (cause) {
+      cause.confirmedSettlements = progress.settled + (cause.confirmedSettlements ?? 0);
+      cause.confirmedSignatures = [...progress.signatures, ...(cause.confirmedSignatures ?? [])];
+      throw cause;
+    }
+  }
+
+  async getClaimFunding(ticket, { allowSettled = false } = {}) {
+    const user = new PublicKey(ticket.user ?? this.wallet.publicKey);
+    const [address, bump] = getTicketPda(user, ticket.id, this.program.programId);
+    if (ticket.address && !address.equals(new PublicKey(ticket.address)))
+      throw new Error("The ticket's recorded address could not be verified.");
+    const account = await this.program.account.ticket.fetchNullable(address);
+    const snapshot = Buffer.from(account?.padding ?? []);
+    if (!account || !account.user.equals(user) || account.bump !== bump || account.nonce.toString() !== String(ticket.id) ||
+      account.drawTime.toString() !== String(ticket.drawTime) || snapshot.length !== 32 || snapshot[0] !== 4 ||
+      snapshot[9] > 1 || snapshot.subarray(10).some((byte) => byte !== 0))
+      throw new Error("This unpaid winning ticket could not be verified. Refresh before claiming.");
+    if (account.settled) {
+      if (allowSettled) return { settled: true, claimFunded: false };
+      throw new Error("This ticket's prize was already claimed.");
+    }
+    if (snapshot[9] !== 0) throw new Error("This ticket's entry was already refunded.");
+    const result = await this.getResult(ticket.drawTime);
+    if (!result?.isPublished || !Array.from(account.numbers).every((number, index) => number === result.numbers[index]))
+      throw new Error("Only an unpaid winning ticket can claim a prize.");
+    return this.bankroll.funding({ ...ticket, numbers: Array.from(account.numbers),
+      paidLamports: amount(account.paidLamports), payoutLamports: amount(snapshot.readBigUInt64LE(1)) });
   }
 
   async refundTicket(ticket, options = {}) {
@@ -1067,11 +1185,15 @@ export class VrfDodosClient extends DodosClient {
       );
     await this.assertDevnet();
     options.assertActive?.();
-    const pooled = await this.ticketReserveVersion(ticket) === 3;
-    return this.program.methods[pooled ? "refundPooledTicket" : "refundTicket"]()
+    const version = await this.ticketReserveVersion(ticket);
+    const pooled = version === 3;
+    const accounts = this.settlementAccounts(ticket);
+    if (version === 4) { delete accounts.config; delete accounts.systemProgram; }
+    return this.program.methods[version === 4 ? "refundBankrollTicket" : pooled ? "refundPooledTicket" : "refundTicket"]()
       .accountsStrict({
-        ...this.settlementAccounts(ticket),
+        ...accounts,
         ...(pooled ? { drawRisk: getDrawRiskPda(ticket.drawTime, this.program.programId)[0] } : {}),
+        ...(version === 4 ? { bankrollDraw: getBankrollDrawPda(ticket.drawTime, this.program.programId)[0] } : {}),
         oracleRequest:
           draw.status === "open"
             ? SystemProgram.programId

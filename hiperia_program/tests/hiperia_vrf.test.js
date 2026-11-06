@@ -13,7 +13,7 @@ import { UAT_ADMIN } from "../../src/lib/onchain/DodosClient.js";
 import { getUpcomingDrawTimes } from "../../src/lib/onchain/time.js";
 
 test(
-  "public VRF purchases accept repeated daily entries and a prefunded draw PDA",
+  "public VRF bankroll purchases preserve treasury liquidity and accept a prefunded draw PDA",
   { timeout: 120_000 },
   async (context) => {
     const endpoint = new URL(
@@ -66,6 +66,15 @@ test(
       randomness.oracleProgram.toBase58(),
       "VRFzZoJdhFWL8rkvu87LpKM3RbcVezpMEc6X5GVDr7y",
     );
+    const bankroll = await program.methods
+      .getBankrollRules()
+      .accountsStrict({ config })
+      .view();
+    assert.equal(bankroll.revision, 1);
+    assert.equal(bankroll.ticketVersion, 4);
+    assert.equal(bankroll.prizeReservedAtPurchase, false);
+    assert.equal(bankroll.entryRefundsReserved, true);
+    assert.equal(bankroll.ledgerAccountSpace, 50);
     const outsider = Keypair.generate();
     const cost = rules.dailyTicketCostLamports.toNumber();
     const prize = rules.dailyPayoutLamports.toNumber();
@@ -74,13 +83,13 @@ test(
       Buffer.from("draw"),
       new BN(time).toArrayLike(Buffer, "le", 8),
     );
+    const bankrollDraw = pda(
+      Buffer.from("bankroll-draw"),
+      Buffer.from("v1"),
+      new BN(time).toArrayLike(Buffer, "le", 8),
+    );
     await provider.sendAndConfirm(
       new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: provider.wallet.publicKey,
-          toPubkey: vault,
-          lamports: 2 * prize,
-        }),
         SystemProgram.transfer({
           fromPubkey: provider.wallet.publicKey,
           toPubkey: outsider.publicKey,
@@ -91,10 +100,16 @@ test(
           toPubkey: draw,
           lamports: 1,
         }),
+        SystemProgram.transfer({
+          fromPubkey: provider.wallet.publicKey,
+          toPubkey: bankrollDraw,
+          lamports: 1,
+        }),
       ),
     );
     const before = await program.account.vault.fetch(vault);
     const reservedBefore = Buffer.from(before.padding).readBigUInt64LE();
+    const vaultBalanceBefore = await provider.connection.getBalance(vault);
     for (const id of [new BN(1), new BN(2)]) {
       const ticket = pda(
         Buffer.from("ticket"),
@@ -102,7 +117,7 @@ test(
         id.toArrayLike(Buffer, "le", 8),
       );
       const purchase = program.methods
-        .buyTicket(id, new BN(time), [22, 2])
+        .buyBankrollTicket(id, new BN(time), [22, 2])
         .accountsStrict({
           config,
           vault,
@@ -110,6 +125,7 @@ test(
           user: outsider.publicKey,
           systemProgram: SystemProgram.programId,
           draw,
+          bankrollDraw,
         })
         .signers([outsider]);
       await purchase.rpc();
@@ -118,6 +134,7 @@ test(
       assert.equal(stored.paidLamports.toNumber(), cost);
       assert.equal(stored.drawTime.toNumber(), time);
       assert.equal(stored.settled, false);
+      assert.equal(stored.padding[0], 4);
       assert.equal(
         Buffer.from(stored.padding).readBigUInt64LE(1),
         BigInt(prize),
@@ -128,8 +145,14 @@ test(
     const after = await program.account.vault.fetch(vault);
     assert.equal(
       Buffer.from(after.padding).readBigUInt64LE(),
-      reservedBefore + 2n * BigInt(prize),
+      reservedBefore + 2n * BigInt(cost),
     );
+    const vaultBalanceAfter = await provider.connection.getBalance(vault);
+    assert.equal(vaultBalanceAfter - vaultBalanceBefore, 2 * cost);
+    const ledger = await program.account.bankrollDraw.fetch(bankrollDraw);
+    assert.equal(ledger.phase, 0);
+    assert.equal(ledger.unsettledEntries.toNumber(), 2);
+    assert.equal(ledger.pendingEntryLamports.toNumber(), 2 * cost);
     const storedDraw = await program.account.draw.fetch(draw);
     assert.equal(storedDraw.ticketCount.toNumber(), 2);
     assert.equal(storedDraw.status, 0);

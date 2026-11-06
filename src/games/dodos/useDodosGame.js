@@ -61,6 +61,7 @@ export function useDodosGame() {
   });
   const [selectedNumbers, setSelectedNumbers] = useState([]);
   const [drawChoice, setDrawChoice] = useState(() => String(getNextDrawTime()));
+  const [quickDrawTime, setQuickDrawTime] = useState(() => getSelectedDrawTime("quick"));
   const [now, setNow] = useState(Date.now());
   const [isLoading, setIsLoading] = useState(true);
   const [pending, setPending] = useState(false);
@@ -95,16 +96,16 @@ export function useDodosGame() {
   );
   const quickDraw = drawChoice === "quick";
   const drawExpired =
-    !quickDraw && Number(drawChoice) <= Math.floor(now / 1000);
+    (quickDraw ? quickDrawTime : Number(drawChoice)) <= Math.floor(now / 1000);
   const dailyDraws = getUpcomingDrawTimes(now);
   if (!quickDraw && !dailyDraws.includes(Number(drawChoice)))
     dailyDraws.unshift(Number(drawChoice));
-  const purchaseQuoteRequired = Boolean(client.primary && !quickDraw);
-  const selectedDrawTime = quickDraw ? null : Number(drawChoice);
+  const purchaseQuoteRequired = Boolean(client.primary);
+  const selectedDrawTime = quickDraw ? quickDrawTime : Number(drawChoice);
   const selectedQuoteKey = purchaseQuoteKey(selectedNumbers, selectedDrawTime);
   const canQuotePurchase = Boolean(
     purchaseQuoteRequired &&
-      config?.liabilityRules?.dailyPooled === true &&
+      config?.bankrollRules?.ticketVersion === 4 &&
       uatReady &&
       authorized &&
       canSign &&
@@ -164,7 +165,7 @@ export function useDodosGame() {
           )
         )
           throw new Error(
-            "The current daily backing quote could not be verified.",
+            "The current entry and account rent quote could not be verified.",
           );
         if (active && activeClient.current === client)
           setPurchaseQuoteState({
@@ -180,7 +181,7 @@ export function useDodosGame() {
             loading: false,
             quote: null,
             error:
-              "The daily backing quote is unavailable. Refresh the quote before buying; existing tickets and claims remain available.",
+              "The entry quote is unavailable. Refresh the quote before buying; existing tickets and claims remain available.",
           });
       }
     }, 500);
@@ -361,6 +362,7 @@ export function useDodosGame() {
       setData({ ...loadedData.current, source: client });
     const pendingPurchase = client.getPendingPurchase();
     if (pendingPurchase) {
+      if (!isDailyDrawTime(pendingPurchase.drawTime)) setQuickDrawTime(pendingPurchase.drawTime);
       setSelectedNumbers(pendingPurchase.numbers);
       setDrawChoice(
         isDailyDrawTime(pendingPurchase.drawTime)
@@ -582,6 +584,7 @@ export function useDodosGame() {
     ),
     purchaseQuote,
     purchaseQuoteRequired,
+    selectedDrawTime,
     purchaseQuoteLoading:
       canQuotePurchase &&
       (!quoteContextMatches || purchaseQuoteState.loading === true),
@@ -593,6 +596,7 @@ export function useDodosGame() {
     ),
     refreshPurchaseQuote: () => {
       if (busy.current || Date.now() < purchaseQuoteRetryAt) return;
+      if (quickDraw) setQuickDrawTime(getSelectedDrawTime("quick"));
       setPurchaseQuoteState(null);
       setPurchaseQuoteAttempt((attempt) => attempt + 1);
     },
@@ -610,6 +614,7 @@ export function useDodosGame() {
     setDrawChoice: (value) => {
       if (!busy.current) {
         setPurchaseQuoteState(null);
+        if (value === "quick") setQuickDrawTime(getSelectedDrawTime("quick"));
         setDrawChoice(value);
       }
     },
@@ -634,13 +639,13 @@ export function useDodosGame() {
     purchase: () =>
       runAction(async () => {
         requireUatWallet();
-        const drawTime = getSelectedDrawTime(drawChoice);
+        const drawTime = client.primary ? selectedDrawTime : getSelectedDrawTime(drawChoice);
         if (
           purchaseQuoteRequired &&
           (!purchaseQuote || purchaseQuote.canPurchase !== true)
         )
           throw new Error(
-            "Review the current backing and account rent quote for this ordered pair and daily draw before buying.",
+            "Review the entry and account rent quote for this ordered pair and draw before buying.",
           );
         const ticket = await client.buyTicket(selectedNumbers, {
           drawTime,
@@ -648,7 +653,7 @@ export function useDodosGame() {
           useReferrals: !config.publicPlayEnabled,
           assertActive,
         });
-        if (mounted.current) setSelectedNumbers([]);
+        if (mounted.current) { setSelectedNumbers([]); setQuickDrawTime(getSelectedDrawTime("quick")); }
         return ticket.recovered
           ? "Your earlier purchase was recovered from the chain. No second purchase was sent."
           : `Ticket confirmed for ${formatDrawTime(ticket.drawTime)} UTC+8. It covers only this draw. View its blockchain history below.`;
@@ -749,8 +754,9 @@ export function useDodosGame() {
           assertActive,
         });
         return result.settled
-          ? `${result.settled} prize${result.settled === 1 ? "" : "s"} claimed. Payouts were sent to your wallet; see ticket history to verify.`
-          : "No unclaimed winning tickets were found among your loaded on-chain entries. Refresh to check for newer results.";
+          ? `${result.settled} prize${result.settled === 1 ? "" : "s"} claimed. Payouts were sent to your wallet; see ticket history to verify.${result.waiting ? ` ${result.waiting} winning ticket${result.waiting === 1 ? " is" : "s are"} waiting for treasury funding and remain unpaid.` : ""}`
+          : result.waiting ? `${result.waiting} winning ticket${result.waiting === 1 ? " is" : "s are"} waiting for treasury funding. Refresh after a refill; their prizes do not expire.`
+            : "No unclaimed winning tickets were found among your loaded on-chain entries. Refresh to check for newer results.";
       }, true),
     enableReferralSharing: () =>
       runReferral(

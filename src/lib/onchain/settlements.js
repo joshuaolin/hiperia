@@ -24,19 +24,19 @@ export async function sendSettlementBatches({
     ...new Map(tickets.map((ticket) => [ticket.address, ticket])).values(),
   ];
   for (let offset = 0; offset < unique.length; offset += batchSize) {
-    assertActive();
-    const candidates = unique.slice(offset, offset + batchSize);
-    const active = await pendingTickets(candidates);
-    if (!active.length) continue;
-    const transaction = new Transaction();
-    for (const ticket of active) {
-      const instructions = await instructionFor(ticket);
-      transaction.add(
-        ...(Array.isArray(instructions) ? instructions : [instructions]),
-      );
-    }
-    assertActive();
     try {
+      assertActive();
+      const candidates = unique.slice(offset, offset + batchSize);
+      const active = await pendingTickets(candidates);
+      if (!active.length) continue;
+      const transaction = new Transaction();
+      for (const ticket of active) {
+        const instructions = await instructionFor(ticket);
+        transaction.add(
+          ...(Array.isArray(instructions) ? instructions : [instructions]),
+        );
+      }
+      assertActive();
       signatures.push(await send(transaction));
       settled += active.length;
     } catch (cause) {

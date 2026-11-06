@@ -25,6 +25,8 @@ const TICKET_SEED: &[u8] = b"ticket";
 const DRAW_SEED: &[u8] = b"draw";
 const RISK_SEED: &[u8] = b"draw-risk";
 const RISK_VERSION_SEED: &[u8] = b"v1";
+const BANKROLL_SEED: &[u8] = b"bankroll-draw";
+const BANKROLL_VERSION_SEED: &[u8] = b"v1";
 const PAIR_COUNT: usize = 420;
 const CLIENT_SEED: &[u8] = b"oracle-client";
 const REQUEST_SEED: &[u8] = b"orao-vrf-randomness-request";
@@ -94,42 +96,45 @@ pub mod hiperia_vrf {
         })
     }
 
-    pub fn buy_pooled_ticket(
-        ctx: Context<BuyPooledTicket>,
-        ticket_nonce: u64,
-        draw_time: i64,
-        numbers: [u8; 2],
+    pub fn get_bankroll_rules(_ctx: Context<GetRules>) -> Result<BankrollRules> {
+        Ok(BankrollRules {
+            revision: 1, daily_enabled: true, quick_enabled: true,
+            entry_refunds_reserved: true, prize_reserved_at_purchase: false,
+            claim_requires_funding: true, ticket_version: 4,
+            ledger_account_space: BankrollDraw::SPACE as u16,
+        })
+    }
+
+    pub fn buy_bankroll_ticket(
+        ctx: Context<BuyBankrollTicket>, ticket_nonce: u64, draw_time: i64, numbers: [u8; 2],
     ) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
         require!(valid_numbers(&numbers), ErrorCode::InvalidNumbers);
-        require!(is_daily(draw_time), ErrorCode::InvalidDrawRisk);
         require!(draw_time > now && draw_time <= now.saturating_add(BUY_AHEAD_SECONDS), ErrorCode::BadDrawTime);
         let cost = draw_cost(draw_time, ctx.accounts.config.ticket_cost_lamports);
         let prize = draw_prize(draw_time, ctx.accounts.config.payout_lamports)?;
         let draw_info = ctx.accounts.draw.to_account_info();
         let mut draw = load_or_create_draw(
-            &draw_info, &ctx.accounts.user.to_account_info(),
-            &ctx.accounts.system_program.to_account_info(), draw_time, ctx.bumps.draw, cost, prize,
+            &draw_info, &ctx.accounts.user.to_account_info(), &ctx.accounts.system_program.to_account_info(),
+            draw_time, ctx.bumps.draw, cost, prize,
         )?;
         require_eq!(draw.status, 0, ErrorCode::DrawNotOpen);
         require_eq!(draw.ticket_cost_lamports, cost, ErrorCode::InvalidTicketCost);
         require_eq!(draw.payout_lamports, prize, ErrorCode::InvalidPayout);
-        let risk_info = ctx.accounts.draw_risk.to_account_info();
-        let mut risk = load_or_create_risk(
-            &risk_info, &ctx.accounts.user.to_account_info(),
-            &ctx.accounts.system_program.to_account_info(), &draw, ctx.bumps.draw_risk,
+        let ledger_info = ctx.accounts.bankroll_draw.to_account_info();
+        let mut ledger = load_or_create_bankroll(
+            &ledger_info, &ctx.accounts.user.to_account_info(), &ctx.accounts.system_program.to_account_info(),
+            &draw, ctx.bumps.bankroll_draw,
         )?;
-        validate_draw_risk(&risk, &draw)?;
-        require_eq!(risk.phase, 0, ErrorCode::InvalidDrawRisk);
-        let previous = risk.reserved_lamports;
-        add_pooled_ticket(&mut risk, &draw, numbers)?;
-        let vault_info = ctx.accounts.vault.to_account_info();
-        let after = replace_reserved_liability(
-            &ctx.accounts.vault, previous, risk.reserved_lamports, cost, 0,
-        )?;
+        validate_bankroll_draw(&ledger, &draw)?;
+        require_eq!(ledger.phase, 0, ErrorCode::InvalidBankrollDraw);
+        let previous = ledger.pending_entry_lamports;
+        ledger.unsettled_entries = ledger.unsettled_entries.checked_add(1).ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?;
+        ledger.pending_entry_lamports = previous.checked_add(cost).ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?;
+        let after = replace_reserved_liability(&ctx.accounts.vault, previous, ledger.pending_entry_lamports, cost, 0)?;
         draw.ticket_count = draw.ticket_count.checked_add(1).ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?;
         transfer(CpiContext::new(ctx.accounts.system_program.to_account_info(), Transfer {
-            from: ctx.accounts.user.to_account_info(), to: vault_info,
+            from: ctx.accounts.user.to_account_info(), to: ctx.accounts.vault.to_account_info(),
         }), cost)?;
         ctx.accounts.vault.padding[..8].copy_from_slice(&after.to_le_bytes());
         let ticket = &mut ctx.accounts.ticket;
@@ -140,11 +145,101 @@ pub mod hiperia_vrf {
         ticket.settled = false;
         ticket.bump = ctx.bumps.ticket;
         ticket.numbers = numbers;
-        ticket.padding = pooled_prize_snapshot(prize)?;
+        ticket.padding = bankroll_prize_snapshot(prize)?;
         save_draw(&draw_info, &draw)?;
-        risk.try_serialize(&mut &mut risk_info.try_borrow_mut_data()?[..])?;
+        ledger.try_serialize(&mut &mut ledger_info.try_borrow_mut_data()?[..])?;
         emit!(TicketPurchased { user: ticket.user, nonce: ticket_nonce, draw_time, numbers, paid_lamports: cost });
         Ok(())
+    }
+
+    pub fn reconcile_bankroll_draw(ctx: Context<ReconcileBankrollDraw>, draw_time: i64) -> Result<()> {
+        require_eq!(ctx.accounts.draw.draw_time, draw_time, ErrorCode::MismatchedDraw);
+        reconcile_bankroll(&mut ctx.accounts.vault, &ctx.accounts.draw, &mut ctx.accounts.bankroll_draw)
+    }
+
+    pub fn settle_bankroll_ticket(ctx: Context<SettleBankrollTicket>) -> Result<()> {
+        let ticket = &ctx.accounts.ticket;
+        validate_ticket_owner(ticket, ctx.accounts.user.key())?;
+        require!(Clock::get()?.unix_timestamp >= ticket.draw_time, ErrorCode::TooEarly);
+        validate_bankroll_ticket(ticket, &ctx.accounts.draw)?;
+        reconcile_bankroll(&mut ctx.accounts.vault, &ctx.accounts.draw, &mut ctx.accounts.bankroll_draw)?;
+        let is_winner = ticket.numbers == ctx.accounts.draw.numbers;
+        let payout = if is_winner { bankroll_ticket_prize(&ticket.padding)? } else { 0 };
+        let info = ctx.accounts.vault.to_account_info();
+        let owner = ctx.accounts.user.to_account_info();
+        let reserved = reserved_liability(&ctx.accounts.vault.padding)?;
+        let rent = Rent::get()?.minimum_balance(info.data_len());
+        let (vault_after, owner_after) = bankroll_payout_balances(info.lamports(), owner.lamports(), payout, rent, reserved)?;
+        ctx.accounts.bankroll_draw.unsettled_entries = ctx.accounts.bankroll_draw.unsettled_entries.checked_sub(1)
+            .ok_or_else(|| error!(ErrorCode::InvalidBankrollDraw))?;
+        if payout > 0 {
+            **info.try_borrow_mut_lamports()? = vault_after;
+            **owner.try_borrow_mut_lamports()? = owner_after;
+        }
+        let ticket = &mut ctx.accounts.ticket;
+        ticket.settled = true;
+        emit!(TicketSettled { user: ticket.user, nonce: ticket.nonce, draw_time: ticket.draw_time, numbers: ticket.numbers, is_winner });
+        Ok(())
+    }
+
+    pub fn release_bankroll_losing_ticket(ctx: Context<ReleaseBankrollLosingTicket>) -> Result<()> {
+        let ticket = &ctx.accounts.ticket;
+        validate_ticket_owner(ticket, ticket.user)?;
+        require!(Clock::get()?.unix_timestamp >= ticket.draw_time, ErrorCode::TooEarly);
+        validate_bankroll_ticket(ticket, &ctx.accounts.draw)?;
+        require!(ticket.numbers != ctx.accounts.draw.numbers, ErrorCode::WinningTicketCannotRelease);
+        reconcile_bankroll(&mut ctx.accounts.vault, &ctx.accounts.draw, &mut ctx.accounts.bankroll_draw)?;
+        ctx.accounts.bankroll_draw.unsettled_entries = ctx.accounts.bankroll_draw.unsettled_entries.checked_sub(1)
+            .ok_or_else(|| error!(ErrorCode::InvalidBankrollDraw))?;
+        let ticket = &mut ctx.accounts.ticket;
+        ticket.settled = true;
+        emit!(TicketSettled { user: ticket.user, nonce: ticket.nonce, draw_time: ticket.draw_time, numbers: ticket.numbers, is_winner: false });
+        Ok(())
+    }
+
+    pub fn refund_bankroll_ticket(ctx: Context<RefundBankrollTicket>) -> Result<()> {
+        let ticket = &ctx.accounts.ticket;
+        let draw = &ctx.accounts.draw;
+        validate_ticket_owner(ticket, ctx.accounts.user.key())?;
+        validate_bankroll_ticket(ticket, draw)?;
+        require!(refund_due(ticket.draw_time, Clock::get()?.unix_timestamp), ErrorCode::RefundNotAvailable);
+        match draw.status {
+            0 => require_keys_eq!(ctx.accounts.oracle_request.key(), System::id(), ErrorCode::InvalidOracleRequest),
+            1 => {
+                require_keys_eq!(ctx.accounts.oracle_request.key(), draw.oracle_request, ErrorCode::InvalidOracleRequest);
+                validate_oracle_request(&ctx.accounts.oracle_request.to_account_info(), &draw.oracle_client, &draw.seed, Some(false))?;
+            }
+            _ => return err!(ErrorCode::RefundNotAvailable),
+        }
+        let ledger = &mut ctx.accounts.bankroll_draw;
+        validate_bankroll_draw(ledger, draw)?;
+        require_eq!(ledger.phase, 0, ErrorCode::InvalidBankrollDraw);
+        let previous = ledger.pending_entry_lamports;
+        ledger.unsettled_entries = ledger.unsettled_entries.checked_sub(1).ok_or_else(|| error!(ErrorCode::InvalidBankrollDraw))?;
+        ledger.pending_entry_lamports = previous.checked_sub(ticket.paid_lamports).ok_or_else(|| error!(ErrorCode::InvalidBankrollDraw))?;
+        let after = replace_reserved_liability(&ctx.accounts.vault, previous, ledger.pending_entry_lamports, 0, ticket.paid_lamports)?;
+        let info = ctx.accounts.vault.to_account_info();
+        let owner = ctx.accounts.user.to_account_info();
+        let rent = Rent::get()?.minimum_balance(info.data_len());
+        let (vault_after, owner_after) = payout_balances(info.lamports(), owner.lamports(), ticket.paid_lamports, rent, after)?;
+        **info.try_borrow_mut_lamports()? = vault_after;
+        **owner.try_borrow_mut_lamports()? = owner_after;
+        ctx.accounts.vault.padding[..8].copy_from_slice(&after.to_le_bytes());
+        let ticket = &mut ctx.accounts.ticket;
+        ticket.settled = true;
+        ticket.padding[9] = 1;
+        emit!(TicketRefunded { user: ticket.user, nonce: ticket.nonce, draw_time: ticket.draw_time, paid_lamports: ticket.paid_lamports });
+        Ok(())
+    }
+
+    pub fn buy_pooled_ticket(
+        ctx: Context<BuyPooledTicket>,
+        ticket_nonce: u64,
+        draw_time: i64,
+        numbers: [u8; 2],
+    ) -> Result<()> {
+        let _ = (ctx, ticket_nonce, draw_time, numbers);
+        err!(ErrorCode::NewPurchasesRequireBankroll)
     }
 
     pub fn reconcile_draw_risk(ctx: Context<ReconcileDrawRisk>, draw_time: i64) -> Result<()> {
@@ -219,51 +314,8 @@ pub mod hiperia_vrf {
         draw_time: i64,
         numbers: [u8; 2],
     ) -> Result<()> {
-        let now = Clock::get()?.unix_timestamp;
-        require!(!is_daily(draw_time), ErrorCode::InvalidDrawRisk);
-        require!(valid_numbers(&numbers), ErrorCode::InvalidNumbers);
-        require!(draw_time > now && draw_time <= now.saturating_add(BUY_AHEAD_SECONDS), ErrorCode::BadDrawTime);
-        let cost = draw_cost(draw_time, ctx.accounts.config.ticket_cost_lamports);
-        let prize = draw_prize(draw_time, ctx.accounts.config.payout_lamports)?;
-        let draw_info = ctx.accounts.draw.to_account_info();
-        let mut draw = load_or_create_draw(
-            &draw_info,
-            &ctx.accounts.user.to_account_info(),
-            &ctx.accounts.system_program.to_account_info(),
-            draw_time,
-            ctx.bumps.draw,
-            cost,
-            prize,
-        )?;
-        require_eq!(draw.status, 0, ErrorCode::DrawNotOpen);
-        require_eq!(draw.draw_time, draw_time, ErrorCode::MismatchedDraw);
-        require_eq!(draw.ticket_cost_lamports, cost, ErrorCode::InvalidTicketCost);
-        require_eq!(draw.payout_lamports, prize, ErrorCode::InvalidPayout);
-        let vault_info = ctx.accounts.vault.to_account_info();
-        let reserved = reserved_liability(&ctx.accounts.vault.padding)?;
-        let rent = Rent::get()?.minimum_balance(vault_info.data_len());
-        let reserved_after = reserve_for_purchase(vault_info.lamports(), cost, prize, rent, reserved)?;
-        draw.ticket_count = draw.ticket_count.checked_add(1).ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?;
-        transfer(
-            CpiContext::new(ctx.accounts.system_program.to_account_info(), Transfer {
-                from: ctx.accounts.user.to_account_info(),
-                to: vault_info,
-            }),
-            cost,
-        )?;
-        ctx.accounts.vault.padding[..8].copy_from_slice(&reserved_after.to_le_bytes());
-        let ticket = &mut ctx.accounts.ticket;
-        ticket.user = ctx.accounts.user.key();
-        ticket.nonce = ticket_nonce;
-        ticket.draw_time = draw_time;
-        ticket.paid_lamports = cost;
-        ticket.settled = false;
-        ticket.bump = ctx.bumps.ticket;
-        ticket.numbers = numbers;
-        ticket.padding = prize_snapshot(prize)?;
-        save_draw(&draw_info, &draw)?;
-        emit!(TicketPurchased { user: ticket.user, nonce: ticket_nonce, draw_time, numbers, paid_lamports: cost });
-        Ok(())
+        let _ = (ctx, ticket_nonce, draw_time, numbers);
+        err!(ErrorCode::NewPurchasesRequireBankroll)
     }
 
     pub fn request_draw(
@@ -512,6 +564,93 @@ fn load_or_create_draw<'info>(
 
 fn save_draw(info: &AccountInfo, draw: &Draw) -> Result<()> {
     draw.try_serialize(&mut &mut info.try_borrow_mut_data()?[..])
+}
+
+fn load_or_create_bankroll<'info>(
+    info: &AccountInfo<'info>, payer: &AccountInfo<'info>, system_program: &AccountInfo<'info>,
+    draw: &Draw, bump: u8,
+) -> Result<BankrollDraw> {
+    if info.owner == &crate::ID {
+        require_eq!(info.data_len(), BankrollDraw::SPACE, ErrorCode::InvalidBankrollDraw);
+        let ledger = BankrollDraw::try_deserialize(&mut &info.try_borrow_data()?[..])?;
+        require_eq!(ledger.bump, bump, ErrorCode::InvalidBankrollDraw);
+        validate_bankroll_draw(&ledger, draw)?;
+        return Ok(ledger);
+    }
+    require!(info.owner == &System::id() && info.data_is_empty(), ErrorCode::InvalidBankrollDraw);
+    let top_up = Rent::get()?.minimum_balance(BankrollDraw::SPACE).saturating_sub(info.lamports());
+    if top_up > 0 {
+        invoke_signed(&system_instruction::transfer(payer.key, info.key, top_up), &[payer.clone(), info.clone(), system_program.clone()], &[])?;
+    }
+    let time = draw.draw_time.to_le_bytes();
+    let bump_bytes = [bump];
+    let seeds: &[&[u8]] = &[BANKROLL_SEED, BANKROLL_VERSION_SEED, &time, &bump_bytes];
+    invoke_signed(&system_instruction::allocate(info.key, BankrollDraw::SPACE as u64), &[info.clone(), system_program.clone()], &[seeds])?;
+    invoke_signed(&system_instruction::assign(info.key, &crate::ID), &[info.clone(), system_program.clone()], &[seeds])?;
+    Ok(BankrollDraw {
+        draw_time: draw.draw_time, bump, phase: 0, pending_entry_lamports: 0,
+        unsettled_entries: 0, padding: [0; 16],
+    })
+}
+
+fn validate_bankroll_draw(ledger: &BankrollDraw, draw: &Draw) -> Result<()> {
+    require_eq!(ledger.draw_time, draw.draw_time, ErrorCode::MismatchedDraw);
+    require!(ledger.padding.iter().all(|byte| *byte == 0), ErrorCode::InvalidBankrollDraw);
+    require!(ledger.unsettled_entries <= draw.ticket_count, ErrorCode::InvalidBankrollDraw);
+    let expected = match ledger.phase {
+        0 => ledger.unsettled_entries.checked_mul(draw.ticket_cost_lamports).ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?,
+        1 => {
+            require_eq!(draw.status, 2, ErrorCode::ResultNotPublished);
+            0
+        }
+        _ => return err!(ErrorCode::InvalidBankrollDraw),
+    };
+    require_eq!(ledger.pending_entry_lamports, expected, ErrorCode::InvalidBankrollDraw);
+    Ok(())
+}
+
+fn reconcile_bankroll(vault: &mut Account<Vault>, draw: &Draw, ledger: &mut BankrollDraw) -> Result<()> {
+    require_eq!(draw.status, 2, ErrorCode::ResultNotPublished);
+    require!(valid_numbers(&draw.numbers), ErrorCode::InvalidNumbers);
+    validate_bankroll_draw(ledger, draw)?;
+    let previous = ledger.pending_entry_lamports;
+    let after = replace_reserved_liability(vault, previous, 0, 0, 0)?;
+    vault.padding[..8].copy_from_slice(&after.to_le_bytes());
+    ledger.phase = 1;
+    ledger.pending_entry_lamports = 0;
+    if previous > 0 {
+        emit!(BankrollEntriesReleased { draw_time: draw.draw_time, entry_lamports: previous });
+    }
+    Ok(())
+}
+
+fn bankroll_prize_snapshot(prize: u64) -> Result<[u8; 32]> {
+    let mut padding = prize_snapshot(prize)?;
+    padding[0] = 4;
+    Ok(padding)
+}
+
+fn bankroll_ticket_prize(padding: &[u8; 32]) -> Result<u64> {
+    require!(padding[0] == 4 && padding[9] <= 1 && padding[10..].iter().all(|byte| *byte == 0), ErrorCode::InvalidTicketReserve);
+    let prize = u64::from_le_bytes(padding[1..9].try_into().map_err(|_| error!(ErrorCode::InvalidTicketReserve))?);
+    require!(prize > 0, ErrorCode::InvalidTicketReserve);
+    Ok(prize)
+}
+
+fn validate_bankroll_ticket(ticket: &Ticket, draw: &Draw) -> Result<()> {
+    require_eq!(ticket.draw_time, draw.draw_time, ErrorCode::MismatchedDraw);
+    require_eq!(ticket.paid_lamports, draw.ticket_cost_lamports, ErrorCode::InvalidTicketCost);
+    require_eq!(bankroll_ticket_prize(&ticket.padding)?, draw.payout_lamports, ErrorCode::InvalidPayout);
+    require!(valid_numbers(&ticket.numbers), ErrorCode::InvalidNumbers);
+    Ok(())
+}
+
+fn bankroll_payout_balances(balance: u64, owner: u64, payout: u64, rent: u64, reserved: u64) -> Result<(u64, u64)> {
+    let protected = rent.checked_add(reserved).ok_or_else(|| error!(ErrorCode::ArithmeticOverflow))?;
+    require!(balance >= protected, ErrorCode::InvalidVaultReserve);
+    let spendable = balance.checked_sub(protected).ok_or_else(|| error!(ErrorCode::InvalidVaultReserve))?;
+    require!(spendable >= payout, ErrorCode::ClaimAwaitingFunds);
+    payout_balances(balance, owner, payout, rent, reserved)
 }
 
 fn load_or_create_risk<'info>(
@@ -845,6 +984,79 @@ pub struct GetRules<'info> {
 
 #[derive(Accounts)]
 #[instruction(ticket_nonce: u64, draw_time: i64, numbers: [u8; 2])]
+pub struct BuyBankrollTicket<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, constraint = config.is_initialized @ ErrorCode::Uninitialized)]
+    pub config: Account<'info, Config>,
+    #[account(mut, seeds = [VAULT_SEED], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+    #[account(init, payer = user, space = Ticket::SPACE, seeds = [TICKET_SEED, user.key().as_ref(), &ticket_nonce.to_le_bytes()], bump)]
+    pub ticket: Account<'info, Ticket>,
+    /// CHECK: The canonical draw PDA is allocated with exact owner and size checks.
+    #[account(mut, seeds = [DRAW_SEED, &draw_time.to_le_bytes()], bump)]
+    pub draw: UncheckedAccount<'info>,
+    /// CHECK: The canonical entry ledger PDA is allocated with exact owner and size checks.
+    #[account(mut, seeds = [BANKROLL_SEED, BANKROLL_VERSION_SEED, &draw_time.to_le_bytes()], bump)]
+    pub bankroll_draw: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub user: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(draw_time: i64)]
+pub struct ReconcileBankrollDraw<'info> {
+    #[account(mut, seeds = [VAULT_SEED], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+    #[account(seeds = [DRAW_SEED, &draw_time.to_le_bytes()], bump = draw.bump, constraint = draw.draw_time == draw_time @ ErrorCode::MismatchedDraw)]
+    pub draw: Account<'info, Draw>,
+    #[account(mut, seeds = [BANKROLL_SEED, BANKROLL_VERSION_SEED, &draw_time.to_le_bytes()], bump = bankroll_draw.bump)]
+    pub bankroll_draw: Account<'info, BankrollDraw>,
+}
+
+#[derive(Accounts)]
+pub struct SettleBankrollTicket<'info> {
+    #[account(mut, seeds = [VAULT_SEED], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+    #[account(mut, seeds = [TICKET_SEED, ticket.user.as_ref(), &ticket.nonce.to_le_bytes()], bump = ticket.bump, constraint = !ticket.settled @ ErrorCode::AlreadySettled)]
+    pub ticket: Account<'info, Ticket>,
+    #[account(seeds = [DRAW_SEED, &ticket.draw_time.to_le_bytes()], bump = draw.bump)]
+    pub draw: Account<'info, Draw>,
+    #[account(mut, seeds = [BANKROLL_SEED, BANKROLL_VERSION_SEED, &ticket.draw_time.to_le_bytes()], bump = bankroll_draw.bump)]
+    pub bankroll_draw: Account<'info, BankrollDraw>,
+    #[account(mut)]
+    pub user: SystemAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ReleaseBankrollLosingTicket<'info> {
+    #[account(mut, seeds = [VAULT_SEED], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+    #[account(mut, seeds = [TICKET_SEED, ticket.user.as_ref(), &ticket.nonce.to_le_bytes()], bump = ticket.bump, constraint = !ticket.settled @ ErrorCode::AlreadySettled)]
+    pub ticket: Account<'info, Ticket>,
+    #[account(seeds = [DRAW_SEED, &ticket.draw_time.to_le_bytes()], bump = draw.bump)]
+    pub draw: Account<'info, Draw>,
+    #[account(mut, seeds = [BANKROLL_SEED, BANKROLL_VERSION_SEED, &ticket.draw_time.to_le_bytes()], bump = bankroll_draw.bump)]
+    pub bankroll_draw: Account<'info, BankrollDraw>,
+}
+
+#[derive(Accounts)]
+pub struct RefundBankrollTicket<'info> {
+    #[account(mut, seeds = [VAULT_SEED], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+    #[account(mut, seeds = [TICKET_SEED, ticket.user.as_ref(), &ticket.nonce.to_le_bytes()], bump = ticket.bump, constraint = !ticket.settled @ ErrorCode::AlreadySettled)]
+    pub ticket: Account<'info, Ticket>,
+    #[account(seeds = [DRAW_SEED, &ticket.draw_time.to_le_bytes()], bump = draw.bump)]
+    pub draw: Account<'info, Draw>,
+    #[account(mut, seeds = [BANKROLL_SEED, BANKROLL_VERSION_SEED, &ticket.draw_time.to_le_bytes()], bump = bankroll_draw.bump)]
+    pub bankroll_draw: Account<'info, BankrollDraw>,
+    /// CHECK: Open draws require the System Program sentinel; pending requests are verified against the pinned oracle.
+    pub oracle_request: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub user: SystemAccount<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(ticket_nonce: u64, draw_time: i64, numbers: [u8; 2])]
 pub struct BuyTicket<'info> {
     #[account(seeds = [CONFIG_SEED], bump = config.bump, constraint = config.is_initialized @ ErrorCode::Uninitialized)]
     pub config: Account<'info, Config>,
@@ -1098,6 +1310,17 @@ pub struct DrawRisk {
 }
 impl DrawRisk { pub const SPACE: usize = 8 + 8 + 1 + 1 + 8 + 8 + 4 + PAIR_COUNT * 8; }
 
+#[account]
+pub struct BankrollDraw {
+    pub draw_time: i64,
+    pub bump: u8,
+    pub phase: u8,
+    pub pending_entry_lamports: u64,
+    pub unsettled_entries: u64,
+    pub padding: [u8; 16],
+}
+impl BankrollDraw { pub const SPACE: usize = 50; }
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
 pub struct UatRules {
     pub revision: u8,
@@ -1137,6 +1360,24 @@ pub struct LiabilityRules {
     pub quick_pooled: bool,
     pub pair_count: u16,
     pub risk_account_space: u16,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
+pub struct BankrollRules {
+    pub revision: u8,
+    pub daily_enabled: bool,
+    pub quick_enabled: bool,
+    pub entry_refunds_reserved: bool,
+    pub prize_reserved_at_purchase: bool,
+    pub claim_requires_funding: bool,
+    pub ticket_version: u8,
+    pub ledger_account_space: u16,
+}
+
+#[event]
+pub struct BankrollEntriesReleased {
+    pub draw_time: i64,
+    pub entry_lamports: u64,
 }
 
 #[event]
@@ -1254,6 +1495,12 @@ pub enum ErrorCode {
     WinningTicketCannotRelease,
     #[msg("The draw's combination liability account is invalid")]
     InvalidDrawRisk,
+    #[msg("New purchases require the bankroll ticket instruction")]
+    NewPurchasesRequireBankroll,
+    #[msg("The draw's entry refund ledger is invalid")]
+    InvalidBankrollDraw,
+    #[msg("This winning claim is waiting for the treasury to be refilled")]
+    ClaimAwaitingFunds,
 }
 
 #[cfg(test)]
@@ -1609,5 +1856,80 @@ mod tests {
         assert!(replace_liability_balances(100, 10, 91, 0, 0, 0, 0).is_err());
         assert!(replace_liability_balances(100, 10, 90, 91, 0, 0, 0).is_err());
         assert!(replace_liability_balances(100, 10, 90, 0, 1, 0, 0).is_err());
+    }
+
+    #[test]
+    fn bankroll_metadata_and_layout_do_not_change_old_accounts_or_prizes() {
+        let rules = BankrollRules {
+            revision: 1, daily_enabled: true, quick_enabled: true, entry_refunds_reserved: true,
+            prize_reserved_at_purchase: false, claim_requires_funding: true, ticket_version: 4,
+            ledger_account_space: BankrollDraw::SPACE as u16,
+        };
+        assert_eq!(rules.try_to_vec().unwrap(), vec![1, 1, 1, 1, 0, 1, 4, 50, 0]);
+        let ledger = BankrollDraw { draw_time: 100, bump: 255, phase: 0, pending_entry_lamports: 0, unsettled_entries: 0, padding: [0; 16] };
+        assert_eq!(ledger.try_to_vec().unwrap().len() + 8, BankrollDraw::SPACE);
+        assert_eq!(Vault::SPACE, 41);
+        assert_eq!(Ticket::SPACE, 100);
+        let old = prize_snapshot(BASE_PRIZE).unwrap();
+        let pooled = pooled_prize_snapshot(BASE_PRIZE).unwrap();
+        let bankroll = bankroll_prize_snapshot(BASE_PRIZE).unwrap();
+        assert_eq!(bankroll_ticket_prize(&bankroll).unwrap(), BASE_PRIZE);
+        assert!(bankroll_ticket_prize(&old).is_err());
+        assert!(bankroll_ticket_prize(&pooled).is_err());
+        assert!(ticket_prize(&bankroll).is_err());
+        assert!(pooled_ticket_prize(&bankroll).is_err());
+    }
+
+    #[test]
+    fn bankroll_purchase_holds_only_its_incoming_entry_and_keeps_spendable_balance_unchanged() {
+        let rent = 100;
+        let old_reserved = 2 * BASE_PRIZE;
+        let balance = rent + old_reserved;
+        for entries in [1_u64, 3, 420, 100_000] {
+            for cost in [DAILY_COST, QUICK_COST] {
+                let incoming = entries * cost;
+                let after = replace_liability_balances(balance, rent, old_reserved, 0, incoming, incoming, 0).unwrap();
+                assert_eq!(after, old_reserved + incoming);
+                assert_eq!(balance + incoming - rent - after, 0);
+                assert_eq!(replace_liability_balances(balance + incoming, rent, after, incoming, 0, 0, 0).unwrap(), old_reserved);
+            }
+        }
+        assert!(replace_liability_balances(balance - 1, rent, old_reserved, 0, DAILY_COST, DAILY_COST, 0).is_err());
+    }
+
+    #[test]
+    fn bankroll_claim_cannot_spend_old_prizes_or_other_draw_refunds_and_can_retry_after_refill() {
+        let rent = 100;
+        let protected = 2 * BASE_PRIZE + 3 * DAILY_COST;
+        let balance = rent + protected + BASE_PRIZE - 1;
+        assert!(bankroll_payout_balances(balance, 0, BASE_PRIZE, rent, protected).is_err());
+        assert_eq!(bankroll_payout_balances(balance + 1, 0, BASE_PRIZE, rent, protected).unwrap(), (rent + protected, BASE_PRIZE));
+        assert_eq!(bankroll_payout_balances(rent + protected, 0, 0, rent, protected).unwrap(), (rent + protected, 0));
+        assert!(bankroll_payout_balances(rent + protected - 1, 0, 0, rent, protected).is_err());
+        assert!(bankroll_payout_balances(rent + protected + BASE_PRIZE, u64::MAX, BASE_PRIZE, rent, protected).is_err());
+    }
+
+    #[test]
+    fn bankroll_ledger_refunds_then_late_fulfillment_leave_only_unpaid_winners_without_reserves() {
+        let mut round = draw(100);
+        round.ticket_count = 3;
+        let mut ledger = BankrollDraw { draw_time: 100, bump: 255, phase: 0, pending_entry_lamports: 3 * QUICK_COST, unsettled_entries: 3, padding: [0; 16] };
+        assert!(validate_bankroll_draw(&ledger, &round).is_ok());
+        ledger.unsettled_entries -= 1;
+        ledger.pending_entry_lamports -= QUICK_COST;
+        assert!(validate_bankroll_draw(&ledger, &round).is_ok());
+        let unrelated_reserve = 3 * BASE_PRIZE;
+        let total = unrelated_reserve + ledger.pending_entry_lamports;
+        assert_eq!(replace_liability_balances(100 + total, 100, total, ledger.pending_entry_lamports, 0, 0, 0).unwrap(), unrelated_reserve);
+        ledger.phase = 1;
+        ledger.pending_entry_lamports = 0;
+        assert!(validate_bankroll_draw(&ledger, &round).is_err());
+        round.status = 2;
+        round.numbers = [2, 22];
+        assert!(validate_bankroll_draw(&ledger, &round).is_ok());
+        ledger.unsettled_entries -= 1;
+        assert!(validate_bankroll_draw(&ledger, &round).is_ok());
+        ledger.pending_entry_lamports = 1;
+        assert!(validate_bankroll_draw(&ledger, &round).is_err());
     }
 }

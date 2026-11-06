@@ -667,6 +667,228 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "get_bankroll_rules",
+      "discriminator": [
+        32,
+        199,
+        181,
+        73,
+        135,
+        31,
+        229,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        }
+      ],
+      "args": [],
+      "returns": {
+        "defined": {
+          "name": "BankrollRules"
+        }
+      }
+    },
+    {
+      "name": "buy_bankroll_ticket",
+      "discriminator": [
+        31,
+        80,
+        127,
+        165,
+        187,
+        166,
+        56,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "ticket",
+          "writable": true
+        },
+        {
+          "name": "draw",
+          "writable": true
+        },
+        {
+          "name": "bankroll_draw",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "ticket_nonce",
+          "type": "u64"
+        },
+        {
+          "name": "draw_time",
+          "type": "i64"
+        },
+        {
+          "name": "numbers",
+          "type": {
+            "array": [
+              "u8",
+              2
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "reconcile_bankroll_draw",
+      "discriminator": [
+        128,
+        136,
+        110,
+        130,
+        233,
+        126,
+        159,
+        206
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "draw"
+        },
+        {
+          "name": "bankroll_draw",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "draw_time",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "settle_bankroll_ticket",
+      "discriminator": [
+        169,
+        78,
+        210,
+        25,
+        196,
+        198,
+        252,
+        27
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "ticket",
+          "writable": true
+        },
+        {
+          "name": "draw"
+        },
+        {
+          "name": "bankroll_draw",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "release_bankroll_losing_ticket",
+      "discriminator": [
+        197,
+        189,
+        253,
+        34,
+        30,
+        171,
+        209,
+        100
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "ticket",
+          "writable": true
+        },
+        {
+          "name": "draw"
+        },
+        {
+          "name": "bankroll_draw",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "refund_bankroll_ticket",
+      "discriminator": [
+        90,
+        193,
+        129,
+        229,
+        183,
+        175,
+        81,
+        172
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "ticket",
+          "writable": true
+        },
+        {
+          "name": "draw"
+        },
+        {
+          "name": "bankroll_draw",
+          "writable": true
+        },
+        {
+          "name": "oracle_request"
+        },
+        {
+          "name": "user",
+          "writable": true
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -733,6 +955,19 @@
         109,
         176,
         56
+      ]
+    },
+    {
+      "name": "BankrollDraw",
+      "discriminator": [
+        80,
+        240,
+        95,
+        218,
+        225,
+        16,
+        49,
+        52
       ]
     }
   ],
@@ -813,6 +1048,19 @@
         205,
         132,
         218
+      ]
+    },
+    {
+      "name": "BankrollEntriesReleased",
+      "discriminator": [
+        47,
+        13,
+        200,
+        83,
+        104,
+        219,
+        47,
+        2
       ]
     }
   ],
@@ -976,6 +1224,21 @@
       "code": 6031,
       "name": "InvalidDrawRisk",
       "msg": "The draw's combination liability account is invalid"
+    },
+    {
+      "code": 6032,
+      "name": "NewPurchasesRequireBankroll",
+      "msg": "New purchases require the bankroll ticket instruction"
+    },
+    {
+      "code": 6033,
+      "name": "InvalidBankrollDraw",
+      "msg": "The draw's entry refund ledger is invalid"
+    },
+    {
+      "code": 6034,
+      "name": "ClaimAwaitingFunds",
+      "msg": "This winning claim is waiting for the treasury to be refilled"
     }
   ],
   "types": [
@@ -1492,6 +1755,99 @@
           },
           {
             "name": "paid_lamports",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BankrollDraw",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "draw_time",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "phase",
+            "type": "u8"
+          },
+          {
+            "name": "pending_entry_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "unsettled_entries",
+            "type": "u64"
+          },
+          {
+            "name": "padding",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "BankrollRules",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "revision",
+            "type": "u8"
+          },
+          {
+            "name": "daily_enabled",
+            "type": "bool"
+          },
+          {
+            "name": "quick_enabled",
+            "type": "bool"
+          },
+          {
+            "name": "entry_refunds_reserved",
+            "type": "bool"
+          },
+          {
+            "name": "prize_reserved_at_purchase",
+            "type": "bool"
+          },
+          {
+            "name": "claim_requires_funding",
+            "type": "bool"
+          },
+          {
+            "name": "ticket_version",
+            "type": "u8"
+          },
+          {
+            "name": "ledger_account_space",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BankrollEntriesReleased",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "draw_time",
+            "type": "i64"
+          },
+          {
+            "name": "entry_lamports",
             "type": "u64"
           }
         ]

@@ -23,3 +23,15 @@ test("reserve rejection explains capacity rather than implying one daily entry",
     "custom program error: 0x177f",
   );
 });
+
+test("a raced unfunded claim remains unpaid and waits for a top-up without automatic resubmission", () => {
+  for (const failure of [
+    { error: { errorCode: { code: "ClaimAwaitingFunds" } } },
+    new Error("Error Number: 6034. Error Message: Treasury needs funding"),
+    new Error("custom program error: 0x1792"),
+    new Error("Batch not confirmed", { cause: new Error("custom program error: 0x1792") }),
+  ]) {
+    assert.match(dodosErrorMessage(failure), /remains unpaid/);
+    assert.match(dodosErrorMessage(failure), /operator tops up/);
+  }
+});

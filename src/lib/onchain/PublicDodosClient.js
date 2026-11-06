@@ -147,15 +147,16 @@ export class PublicDodosClient {
           (number, index) => number === ticket.result.numbers[index],
         ),
     );
-    const progress = { settled: 0, signatures: [] };
+    const progress = { settled: 0, signatures: [], waiting: 0 };
     for (const client of [this.legacy, this.primary]) {
       const group = wins.filter((ticket) => this.clientFor(ticket) === client);
       if (!group.length) continue;
-      options.assertActive?.();
       try {
+        options.assertActive?.();
         const result = await client.settleBatch(group, options);
         progress.settled += result.settled;
         progress.signatures.push(...result.signatures);
+        progress.waiting += result.waiting ?? 0;
       } catch (cause) {
         const failure = new Error(
           `${progress.settled ? `${progress.settled} earlier prize${progress.settled === 1 ? " was" : "s were"} confirmed. ` : ""}${cause.message || "The next prize batch was not confirmed."} Refresh to check the remaining tickets; confirmed claims are not resent.`,
