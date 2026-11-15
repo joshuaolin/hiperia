@@ -1,8 +1,12 @@
 # Hiperia
 
-Dodos on Solana Devnet, with ordered number picks, on-chain tickets and results, optional wallet-signed donations, and a Solana purple/green dashboard. Lemon remains disabled with a 2027 coming-soon label.
+Dodos and Lemon on Solana Devnet, with ordered picks, on-chain tickets and results, optional wallet-signed donations, and a Solana purple/green dashboard. Alice in Wonderland is a disabled coming-soon game.
 
 The [public UAT](https://www.uat.hiperia.xyz/) uses the separate [ORAO VRF game program](https://explorer.solana.com/address/6SWK5s22L7HDzvNdFbMhTjtMQNPfUmMzM4D8S3ZRRgRy?cluster=devnet), open to all signing wallets using test SOL. The same public Devnet game is enabled for the [production hostname](https://www.hiperia.xyz/) by the November 1 release profile below. On October 31, 2026, its deployed bytes, funded prize pool, repeated mobile browser purchases and an actual fulfilled random draw were verified. The existing fixed-result program remains separate for historical claims. See [the verification evidence and limits](./docs/UAT-AUDIT.md#public-devnet-live-verification-october-31-2026). This is a public Devnet beta; draws still need explicit request/completion approvals, and no unattended keeper is configured.
+
+## Lemon
+
+Lemon uses ten fruit symbols for digits 0–9, with three ordered positions and repeats allowed: 1,000 possible exact triples. Its separate Devnet program preserves entry-funded refund holds and fixed prizes that can wait for treasury funding. The app reads active offers and finalized results from Lemon's own chain accounts; Dodos history and claims keep their original programs. On November 15, its deployed bytes, four accepted purchases without capital depletion, and two actual ORAO draws were verified. See [Lemon's rules and economics](./docs/LEMON.md) and [live evidence and limits](./docs/UAT-AUDIT.md#lemon-devnet-verification-november-15-2026).
 
 ## Run
 
@@ -25,7 +29,7 @@ The default RPC is `https://api.devnet.solana.com`; copy [.env.example](./.env.e
 
 ## UAT on Vercel
 
-[Open UAT](https://www.uat.hiperia.xyz/). Always use this hostname for UAT. The November 6 bankroll release is READY Preview `dpl_DQknb1Y7bJ6iRM5Wqc4Hqj46mPmn`, built with `VITE_APP_ENV=uat`, `VITE_GAME_VERSION=vrf` and `VITE_SOLANA_RPC=https://api.devnet.solana.com`. The canonical hostname was verified with anonymous HTTP 200 and actual-chain browser checks after alias assignment. A protection exception applies only to `www.uat.hiperia.xyz`; project-wide protection, generated Preview protection and production domains/settings were left unchanged. Recheck the current alias and anonymous loading after each deployment, separately from wallet access. See [the November 6 deployment and purchase evidence](./docs/UAT-AUDIT.md#bankroll-live-verification-november-6-2026).
+[Open UAT](https://www.uat.hiperia.xyz/). Always use this hostname for UAT. The November 15 Lemon release is READY Preview `dpl_ABEi74A5kNLi4qmqTvjCeEJCPNx2`, built with `VITE_APP_ENV=uat`, `VITE_GAME_VERSION=vrf` and `VITE_SOLANA_RPC=https://api.devnet.solana.com`. A protection exception applies only to `www.uat.hiperia.xyz`; project-wide protection, generated Preview protection and production settings remain unchanged. Recheck the current alias and anonymous loading after each deployment, separately from wallet access. See [the November 15 verification evidence](./docs/UAT-AUDIT.md#lemon-devnet-verification-november-15-2026).
 
 The project is linked locally to `joshua-olins-projects/hiperia.xyz`. Deploy another UAT preview with:
 
@@ -178,9 +182,13 @@ npm run build
 npm run test:ui
 npm run test:ui:uat
 node scripts/test-ui-vrf.js
+npm run test:ui:lemon
+npm run test:ui:lemon:hook
 ```
 
 The browser check needs the dev server running and Google Chrome installed. It checks 320, 390, 768 and 1440px layouts, selection limits, donation validation, and blocked keypair URLs. Screenshots go into ignored `test-results/`.
+
+The Lemon hook regression check runs the actual [game hook](./src/games/lemon/useLemonGame.js) with browser-only wallet, RPC and client fixtures. Its 13 scenarios cover wallet changes, stale quotes, transient RPC failures, preserved claims, reveal approval costs and once-only submission. It uses no private keys, real wallet signing or on-chain transactions. Start Vite first; `UI_TEST_ORIGIN` selects another development server instead of the default `http://127.0.0.1:5173`. The JSON report is saved to ignored `test-results/lemon-hook.json`.
 
 - [Public client](./src/lib/onchain/PublicDodosClient.js): new purchases plus source-routed legacy tickets, results and claims.
 - [VRF client](./src/lib/onchain/VrfDodosClient.js): draw requests, verified oracle reads, finalization and refunds.

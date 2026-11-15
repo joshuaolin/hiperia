@@ -141,7 +141,7 @@ export class DodosClient {
       const saved = storage.getItem(this.purchaseKey);
       if (saved) {
         const pending = JSON.parse(saved);
-        validateNumbers(pending.numbers, 1);
+        this.validateSelection(pending.numbers, 1);
         u64LeBytes(pending.id);
         i64LeBytes(pending.drawTime);
         this.pendingPurchase = pending;
@@ -153,6 +153,10 @@ export class DodosClient {
     return this.pendingPurchase
       ? { ...this.pendingPurchase, numbers: [...this.pendingPurchase.numbers] }
       : null;
+  }
+
+  validateSelection(numbers, minimum = MIN_NUMBER) {
+    validateNumbers(numbers, minimum);
   }
 
   rememberPurchase(ticket) {
@@ -394,7 +398,7 @@ export class DodosClient {
     this.requireSigner();
     const recovered = await this.recoverPendingPurchase();
     if (recovered) return recovered;
-    validateNumbers(numbers);
+    this.validateSelection(numbers);
     const selection = [...numbers];
     const now = this.now();
     const drawTime = options.drawTime ?? getNextDrawTime(now);
@@ -488,7 +492,7 @@ export class DodosClient {
   }
 
   async checkTicket(ticket) {
-    validateNumbers(ticket.numbers, 1);
+    this.validateSelection(ticket.numbers, 1);
     const result = await this.getResult(ticket.drawTime);
     if (!result?.isPublished) return { status: "pending", numbers: null };
     const numbers = Array.from(result.numbers);

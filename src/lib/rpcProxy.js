@@ -2,6 +2,7 @@ import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { Buffer } from "node:buffer";
 import idl from "../idl/hiperia_program.json" with { type: "json" };
 import vrfIdl from "../idl/hiperia_vrf.json" with { type: "json" };
+import lemonIdl from "../idl/hiperia_lemon.json" with { type: "json" };
 
 export const DEVNET_RPC = "https://api.devnet.solana.com";
 export const RPC_BODY_LIMIT = 65_536;
@@ -27,6 +28,7 @@ const PROGRAMS = new Map(
   [
     [idl, { getrules: 56, getreferralrules: 34 }],
     [vrfIdl, { getrules: 56, getaccessrules: 3, getrandomnessrules: 39, getliabilityrules: 7, getbankrollrules: 9 }],
+    [lemonIdl, { getrules: 58, getaccessrules: 3, getrandomnessrules: 39, getbankrollrules: 9 }],
   ].map(([program, sizes]) => [
     program.address,
     {
@@ -274,7 +276,7 @@ function hasRulesReturnData(value, request) {
     Array.isArray(simulation.returnData.data) &&
     simulation.returnData.data.length === 2 &&
     simulation.returnData.data[1] === "base64" &&
-    base64(simulation.returnData.data[0], 56) &&
+    base64(simulation.returnData.data[0], metadata.bytes) &&
     Buffer.from(simulation.returnData.data[0], "base64").length ===
       metadata?.bytes
   );

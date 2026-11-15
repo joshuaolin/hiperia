@@ -31,9 +31,20 @@
   font-size: 11px;
   line-height: 1.6;
 }
-.draw-results-source a {
+.draw-results-source .draw-results-program {
   color: var(--purple-light);
-  text-underline-offset: 3px;
+  font-size: inherit;
+}
+.draw-results .history-link {
+  gap: 6px;
+  text-decoration: none;
+  border-radius: 4px;
+}
+.draw-results .history-link:hover {
+  color: var(--text);
+}
+.draw-results .history-link > svg {
+  flex-shrink: 0;
 }
 .draw-results-account {
   display: block;
@@ -187,9 +198,6 @@
   font-size: 11px;
   white-space: nowrap;
 }
-.draw-results-history:hover {
-  text-decoration: underline;
-}
 .draw-results-footer {
   display: flex;
   justify-content: space-between;
@@ -216,8 +224,10 @@
   font-size: 11px;
   line-height: 1.7;
 }
-.draw-results-proof {
-  margin-top: 9px;
+.draw-results .draw-results-proof {
+  display: flex;
+  width: fit-content;
+  margin-top: 2px;
 }
 @media (max-width: 1050px) {
   .draw-results-filters {

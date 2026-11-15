@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import "../styles/back-to-top.css";
 
-export default function BackToTop({ navigationOpen = false }) {
+export default function BackToTop({
+  navigationOpen = false,
+  activeGame = "dodos",
+}) {
   const { visible: walletModalVisible } = useWalletModal();
   const [visible, setVisible] = useState(false);
 
@@ -32,11 +35,13 @@ export default function BackToTop({ navigationOpen = false }) {
   }, []);
 
   function returnToTop() {
-    if (window.location.hash !== "#dodos") {
-      window.history.replaceState(window.history.state, "", "#dodos");
+    const game = activeGame === "lemon" ? "lemon" : "dodos";
+    const hash = `#${game}`;
+    if (window.location.hash !== hash) {
+      window.history.replaceState(window.history.state, "", hash);
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     }
-    document.getElementById("dodos-heading")?.focus({ preventScroll: true });
+    document.getElementById(`${game}-heading`)?.focus({ preventScroll: true });
     window.scrollTo({
       top: 0,
       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches

@@ -1,0 +1,1313 @@
+{
+  "address": "7ZDTrz498pQuMyV4frPv2cZu5vR1ZrpfzFWAPGpVGcYr",
+  "metadata": {
+    "name": "hiperia_lemon",
+    "version": "0.1.0",
+    "spec": "0.1.0"
+  },
+  "instructions": [
+    {
+      "name": "initialize",
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "ticket_cost_lamports",
+          "type": "u64"
+        },
+        {
+          "name": "payout_lamports",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "get_rules",
+      "discriminator": [
+        100,
+        26,
+        69,
+        246,
+        115,
+        199,
+        97,
+        78
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        }
+      ],
+      "args": [],
+      "returns": {
+        "defined": {
+          "name": "LemonRules"
+        }
+      }
+    },
+    {
+      "name": "get_access_rules",
+      "discriminator": [
+        139,
+        62,
+        58,
+        237,
+        53,
+        163,
+        247,
+        56
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        }
+      ],
+      "args": [],
+      "returns": {
+        "defined": {
+          "name": "AccessRules"
+        }
+      }
+    },
+    {
+      "name": "get_randomness_rules",
+      "discriminator": [
+        246,
+        220,
+        23,
+        94,
+        22,
+        43,
+        115,
+        209
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        }
+      ],
+      "args": [],
+      "returns": {
+        "defined": {
+          "name": "RandomnessRules"
+        }
+      }
+    },
+    {
+      "name": "get_bankroll_rules",
+      "discriminator": [
+        32,
+        199,
+        181,
+        73,
+        135,
+        31,
+        229,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        }
+      ],
+      "args": [],
+      "returns": {
+        "defined": {
+          "name": "BankrollRules"
+        }
+      }
+    },
+    {
+      "name": "buy_bankroll_ticket",
+      "discriminator": [
+        31,
+        80,
+        127,
+        165,
+        187,
+        166,
+        56,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "ticket",
+          "writable": true
+        },
+        {
+          "name": "draw",
+          "writable": true
+        },
+        {
+          "name": "bankroll_draw",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "ticket_nonce",
+          "type": "u64"
+        },
+        {
+          "name": "draw_time",
+          "type": "i64"
+        },
+        {
+          "name": "numbers",
+          "type": {
+            "array": [
+              "u8",
+              3
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "reconcile_bankroll_draw",
+      "discriminator": [
+        128,
+        136,
+        110,
+        130,
+        233,
+        126,
+        159,
+        206
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "draw"
+        },
+        {
+          "name": "bankroll_draw",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "draw_time",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "settle_bankroll_ticket",
+      "discriminator": [
+        169,
+        78,
+        210,
+        25,
+        196,
+        198,
+        252,
+        27
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "ticket",
+          "writable": true
+        },
+        {
+          "name": "draw"
+        },
+        {
+          "name": "bankroll_draw",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "release_bankroll_losing_ticket",
+      "discriminator": [
+        197,
+        189,
+        253,
+        34,
+        30,
+        171,
+        209,
+        100
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "ticket",
+          "writable": true
+        },
+        {
+          "name": "draw"
+        },
+        {
+          "name": "bankroll_draw",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "refund_bankroll_ticket",
+      "discriminator": [
+        90,
+        193,
+        129,
+        229,
+        183,
+        175,
+        81,
+        172
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "ticket",
+          "writable": true
+        },
+        {
+          "name": "draw"
+        },
+        {
+          "name": "bankroll_draw",
+          "writable": true
+        },
+        {
+          "name": "oracle_request"
+        },
+        {
+          "name": "user",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "request_draw",
+      "discriminator": [
+        22,
+        180,
+        8,
+        81,
+        47,
+        21,
+        86,
+        159
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "draw",
+          "writable": true
+        },
+        {
+          "name": "oracle_client",
+          "writable": true
+        },
+        {
+          "name": "requester",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "oracle_program"
+        },
+        {
+          "name": "network_state",
+          "writable": true
+        },
+        {
+          "name": "treasury",
+          "writable": true
+        },
+        {
+          "name": "oracle_request",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "draw_time",
+          "type": "i64"
+        },
+        {
+          "name": "nonce",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "max_fee_lamports",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "finalize_draw",
+      "discriminator": [
+        112,
+        9,
+        234,
+        94,
+        99,
+        176,
+        12,
+        181
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "draw",
+          "writable": true
+        },
+        {
+          "name": "oracle_request"
+        }
+      ],
+      "args": [
+        {
+          "name": "draw_time",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "reclaim_oracle_funding",
+      "discriminator": [
+        18,
+        32,
+        207,
+        96,
+        154,
+        107,
+        177,
+        14
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "draw"
+        },
+        {
+          "name": "oracle_client",
+          "writable": true
+        },
+        {
+          "name": "requester",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "draw_time",
+          "type": "i64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
+    {
+      "name": "Vault",
+      "discriminator": [
+        211,
+        8,
+        232,
+        43,
+        2,
+        152,
+        117,
+        119
+      ]
+    },
+    {
+      "name": "Ticket",
+      "discriminator": [
+        41,
+        228,
+        24,
+        165,
+        78,
+        90,
+        235,
+        200
+      ]
+    },
+    {
+      "name": "Draw",
+      "discriminator": [
+        225,
+        131,
+        41,
+        222,
+        122,
+        20,
+        146,
+        202
+      ]
+    },
+    {
+      "name": "BankrollDraw",
+      "discriminator": [
+        80,
+        240,
+        95,
+        218,
+        225,
+        16,
+        49,
+        52
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "BankrollEntriesReleased",
+      "discriminator": [
+        47,
+        13,
+        200,
+        83,
+        104,
+        219,
+        47,
+        2
+      ]
+    },
+    {
+      "name": "TicketPurchased",
+      "discriminator": [
+        108,
+        59,
+        246,
+        95,
+        84,
+        145,
+        13,
+        71
+      ]
+    },
+    {
+      "name": "RandomnessRequested",
+      "discriminator": [
+        10,
+        64,
+        183,
+        29,
+        104,
+        63,
+        90,
+        149
+      ]
+    },
+    {
+      "name": "DrawFinalized",
+      "discriminator": [
+        138,
+        216,
+        3,
+        43,
+        232,
+        34,
+        183,
+        103
+      ]
+    },
+    {
+      "name": "TicketSettled",
+      "discriminator": [
+        72,
+        40,
+        13,
+        3,
+        184,
+        159,
+        190,
+        211
+      ]
+    },
+    {
+      "name": "TicketRefunded",
+      "discriminator": [
+        46,
+        173,
+        213,
+        43,
+        145,
+        205,
+        132,
+        218
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Uninitialized",
+      "msg": "Program not initialized"
+    },
+    {
+      "code": 6001,
+      "name": "Unauthorized",
+      "msg": "Unauthorized access"
+    },
+    {
+      "code": 6002,
+      "name": "AlreadySettled",
+      "msg": "Ticket already settled"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidNumbers",
+      "msg": "Invalid numbers selected"
+    },
+    {
+      "code": 6004,
+      "name": "ResultNotPublished",
+      "msg": "Result not yet published"
+    },
+    {
+      "code": 6005,
+      "name": "TooEarly",
+      "msg": "The draw has not closed yet"
+    },
+    {
+      "code": 6006,
+      "name": "MismatchedDraw",
+      "msg": "Result and ticket draw times do not match"
+    },
+    {
+      "code": 6007,
+      "name": "BadDrawTime",
+      "msg": "Draw time too far in past or future"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidTicketCost",
+      "msg": "Invalid ticket cost"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidPayout",
+      "msg": "Invalid payout amount"
+    },
+    {
+      "code": 6010,
+      "name": "InsufficientVaultFunds",
+      "msg": "The vault cannot make this transfer while protecting entry refunds"
+    },
+    {
+      "code": 6011,
+      "name": "ArithmeticOverflow",
+      "msg": "The account balance would overflow"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidVaultReserve",
+      "msg": "The vault liability reserve is invalid or underfunded"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidTicketReserve",
+      "msg": "The ticket liability reserve marker is invalid"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidDraw",
+      "msg": "Invalid draw account"
+    },
+    {
+      "code": 6015,
+      "name": "DrawNotOpen",
+      "msg": "The draw is no longer accepting a randomness request"
+    },
+    {
+      "code": 6016,
+      "name": "EmptyDraw",
+      "msg": "The draw has no accepted tickets"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidOracleNetwork",
+      "msg": "The oracle configuration is invalid"
+    },
+    {
+      "code": 6018,
+      "name": "OracleFeeExceeded",
+      "msg": "The oracle fee exceeds the approved maximum"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidOracleRequest",
+      "msg": "The oracle request does not match this draw"
+    },
+    {
+      "code": 6020,
+      "name": "OracleRequestAlreadyExists",
+      "msg": "The oracle request seed has already been used"
+    },
+    {
+      "code": 6021,
+      "name": "InvalidOracleClient",
+      "msg": "The oracle client does not match this draw"
+    },
+    {
+      "code": 6022,
+      "name": "DrawNotPending",
+      "msg": "This draw has no pending randomness request"
+    },
+    {
+      "code": 6023,
+      "name": "RandomnessPending",
+      "msg": "The oracle has not fulfilled this request yet"
+    },
+    {
+      "code": 6024,
+      "name": "InvalidRandomness",
+      "msg": "The oracle output contains no usable uniform sample"
+    },
+    {
+      "code": 6025,
+      "name": "RefundNotAvailable",
+      "msg": "This ticket is not eligible for an oracle-outage entry refund"
+    },
+    {
+      "code": 6026,
+      "name": "WinningTicketCannotRelease",
+      "msg": "A winning ticket must preserve its owner-directed prize claim"
+    },
+    {
+      "code": 6027,
+      "name": "InvalidBankrollDraw",
+      "msg": "The draw's entry refund ledger is invalid"
+    },
+    {
+      "code": 6028,
+      "name": "ClaimAwaitingFunds",
+      "msg": "This winning claim is waiting for the treasury to be refilled"
+    }
+  ],
+  "types": [
+    {
+      "name": "Config",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "is_initialized",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "ticket_cost_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "payout_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "padding",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Vault",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "padding",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Ticket",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "draw_time",
+            "type": "i64"
+          },
+          {
+            "name": "paid_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "settled",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "numbers",
+            "type": {
+              "array": [
+                "u8",
+                3
+              ]
+            }
+          },
+          {
+            "name": "padding",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Draw",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "draw_time",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "ticket_count",
+            "type": "u64"
+          },
+          {
+            "name": "seed",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "oracle_request",
+            "type": "pubkey"
+          },
+          {
+            "name": "oracle_client",
+            "type": "pubkey"
+          },
+          {
+            "name": "requested_by",
+            "type": "pubkey"
+          },
+          {
+            "name": "requested_at",
+            "type": "i64"
+          },
+          {
+            "name": "numbers",
+            "type": {
+              "array": [
+                "u8",
+                3
+              ]
+            }
+          },
+          {
+            "name": "is_daily",
+            "type": "bool"
+          },
+          {
+            "name": "ticket_cost_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "payout_lamports",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BankrollDraw",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "draw_time",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "phase",
+            "type": "u8"
+          },
+          {
+            "name": "pending_entry_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "unsettled_entries",
+            "type": "u64"
+          },
+          {
+            "name": "padding",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "LemonRules",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "revision",
+            "type": "u8"
+          },
+          {
+            "name": "min_number",
+            "type": "u8"
+          },
+          {
+            "name": "max_number",
+            "type": "u8"
+          },
+          {
+            "name": "pick_count",
+            "type": "u8"
+          },
+          {
+            "name": "repeats_allowed",
+            "type": "bool"
+          },
+          {
+            "name": "ordered",
+            "type": "bool"
+          },
+          {
+            "name": "outcome_count",
+            "type": "u16"
+          },
+          {
+            "name": "quick_ticket_cost_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "daily_ticket_cost_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "quick_payout_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "daily_payout_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "daily_hours",
+            "type": {
+              "array": [
+                "u8",
+                6
+              ]
+            }
+          },
+          {
+            "name": "schedule_interval_seconds",
+            "type": "u32"
+          },
+          {
+            "name": "schedule_offset_seconds",
+            "type": "u32"
+          },
+          {
+            "name": "buy_ahead_seconds",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AccessRules",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "revision",
+            "type": "u8"
+          },
+          {
+            "name": "public_play",
+            "type": "bool"
+          },
+          {
+            "name": "public_results",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RandomnessRules",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "revision",
+            "type": "u8"
+          },
+          {
+            "name": "oracle_program",
+            "type": "pubkey"
+          },
+          {
+            "name": "refund_after_seconds",
+            "type": "u32"
+          },
+          {
+            "name": "pending_request_space",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BankrollRules",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "revision",
+            "type": "u8"
+          },
+          {
+            "name": "daily_enabled",
+            "type": "bool"
+          },
+          {
+            "name": "quick_enabled",
+            "type": "bool"
+          },
+          {
+            "name": "entry_refunds_reserved",
+            "type": "bool"
+          },
+          {
+            "name": "prize_reserved_at_purchase",
+            "type": "bool"
+          },
+          {
+            "name": "claim_requires_funding",
+            "type": "bool"
+          },
+          {
+            "name": "ticket_version",
+            "type": "u8"
+          },
+          {
+            "name": "ledger_account_space",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BankrollEntriesReleased",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "draw_time",
+            "type": "i64"
+          },
+          {
+            "name": "entry_lamports",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TicketPurchased",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "draw_time",
+            "type": "i64"
+          },
+          {
+            "name": "numbers",
+            "type": {
+              "array": [
+                "u8",
+                3
+              ]
+            }
+          },
+          {
+            "name": "paid_lamports",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RandomnessRequested",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "draw_time",
+            "type": "i64"
+          },
+          {
+            "name": "request",
+            "type": "pubkey"
+          },
+          {
+            "name": "client",
+            "type": "pubkey"
+          },
+          {
+            "name": "requested_by",
+            "type": "pubkey"
+          },
+          {
+            "name": "seed",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "DrawFinalized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "draw_time",
+            "type": "i64"
+          },
+          {
+            "name": "numbers",
+            "type": {
+              "array": [
+                "u8",
+                3
+              ]
+            }
+          },
+          {
+            "name": "request",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TicketSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "draw_time",
+            "type": "i64"
+          },
+          {
+            "name": "numbers",
+            "type": {
+              "array": [
+                "u8",
+                3
+              ]
+            }
+          },
+          {
+            "name": "is_winner",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TicketRefunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "draw_time",
+            "type": "i64"
+          },
+          {
+            "name": "paid_lamports",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}

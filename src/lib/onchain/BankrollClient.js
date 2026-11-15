@@ -11,7 +11,11 @@ function amount(value) {
 }
 
 export class BankrollClient {
-  constructor(client) { this.client = client; }
+  constructor(client, { drawSpace = 181, ticketSpace = 100 } = {}) {
+    this.client = client;
+    this.drawSpace = drawSpace;
+    this.ticketSpace = ticketSpace;
+  }
 
   address(drawTime) {
     return getBankrollDrawPda(drawTime, this.client.program.programId)[0];
@@ -64,8 +68,8 @@ export class BankrollClient {
     if (ledger) this.validateDraw(ledger, draw);
     const [ledgerRent, drawRent, ticketRent, ledgerInfo, drawInfo] = await Promise.all([
       ledger ? 0 : connection.getMinimumBalanceForRentExemption(50, "confirmed"),
-      draw ? 0 : connection.getMinimumBalanceForRentExemption(181, "confirmed"),
-      connection.getMinimumBalanceForRentExemption(100, "confirmed"),
+      draw ? 0 : connection.getMinimumBalanceForRentExemption(this.drawSpace, "confirmed"),
+      connection.getMinimumBalanceForRentExemption(this.ticketSpace, "confirmed"),
       ledger ? null : connection.getAccountInfo(this.address(drawTime), "confirmed"),
       draw ? null : connection.getAccountInfo(getDrawPda(drawTime, program.programId)[0], "confirmed"),
     ]);
@@ -87,7 +91,7 @@ export class BankrollClient {
     );
     const entries = snapshot?.value;
     if (!Number.isSafeInteger(snapshot?.context?.slot) || snapshot.context.slot < 0 || !Array.isArray(entries) || entries.length !== 3 ||
-      entries.some((info, index) => !info || !info.owner.equals(program.programId) || info.executable || info.data.length !== [50, 181, 41][index]))
+      entries.some((info, index) => !info || !info.owner.equals(program.programId) || info.executable || info.data.length !== [50, this.drawSpace, 41][index]))
       throw new Error("The prize vault funding snapshot could not be verified. Refresh before claiming.");
     const [ledgerInfo, drawInfo, vaultInfo] = entries;
     const ledger = this.validate(program.coder.accounts.decode("bankrollDraw", ledgerInfo.data), ticket.drawTime, ledgerAddress);

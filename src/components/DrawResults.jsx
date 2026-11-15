@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from "react";
 import useLinkedDisclosure from "./useLinkedDisclosure.js";
+import HistoryLink from "./HistoryLink.jsx";
 import { explorerAccountUrl } from "../lib/explorer.js";
 import { PROGRAM_ID } from "../lib/onchain/idl.js";
 import {
@@ -137,12 +138,12 @@ export default function DrawResults({
                   {sourcePrograms.map(({ address, href }, index) => (
                     <span key={address}>
                       {index > 0 && " · "}
-                      <a href={href} target="_blank" rel="noopener noreferrer">
+                      <HistoryLink href={href} className="draw-results-program">
                         {sourcePrograms.length === 1
                           ? "Dodos program"
                           : `Program ${address.slice(0, 6)}…${address.slice(-6)}`}{" "}
-                        on {network.label ?? network.cluster} ↗
-                      </a>
+                        on {network.label ?? network.cluster}
+                      </HistoryLink>
                     </span>
                   ))}
                   .
@@ -322,15 +323,13 @@ export default function DrawResults({
                     </td>
                     <td>
                       {href ? (
-                        <a
-                          className="history-link draw-results-history"
+                        <HistoryLink
+                          className="draw-results-history"
                           href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
                           aria-label={`Draw history for ${formatResultDate(result.drawTime)} ${formatResultTime(result.drawTime)} on ${network.label ?? network.cluster}`}
                         >
-                          Draw history <span aria-hidden="true">↗</span>
-                        </a>
+                          Draw history
+                        </HistoryLink>
                       ) : (
                         <span className="text-muted">Network unavailable</span>
                       )}
@@ -340,24 +339,20 @@ export default function DrawResults({
                           : ""}
                       </span>
                       {oracleHref && (
-                        <a
-                          className="history-link draw-results-proof"
+                        <HistoryLink
+                          className="draw-results-proof"
                           href={oracleHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
                         >
-                          Oracle request <span aria-hidden="true">↗</span>
-                        </a>
+                          Oracle request
+                        </HistoryLink>
                       )}
                       {oracleProgramHref && (
-                        <a
-                          className="history-link draw-results-proof"
+                        <HistoryLink
+                          className="draw-results-proof"
                           href={oracleProgramHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
                         >
-                          Oracle program <span aria-hidden="true">↗</span>
-                        </a>
+                          Oracle program
+                        </HistoryLink>
                       )}
                     </td>
                   </tr>

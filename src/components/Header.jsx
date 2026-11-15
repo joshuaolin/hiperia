@@ -81,7 +81,13 @@ export default function Header({ activeSection = "dodos" }) {
   return (
     <header className="header">
       <div className="header-breadcrumb" aria-label="Current page">
-        <span>{activeSection === "support" ? "Support Hiperia" : "Dodos"}</span>
+        <span>
+          {activeSection === "support"
+            ? "Support Hiperia"
+            : activeSection === "lemon"
+              ? "Lemon"
+              : "Dodos"}
+        </span>
         <span className="header-breadcrumb-separator" aria-hidden="true">
           /
         </span>

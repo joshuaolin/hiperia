@@ -1,7 +1,7 @@
 import { useState } from "react";
 import TicketList from "./TicketList.jsx";
+import HistoryLink from "./HistoryLink.jsx";
 import useLinkedDisclosure from "./useLinkedDisclosure.js";
-import { explorerAccountUrl } from "../lib/explorer.js";
 import { formatCountdown, formatDrawTime } from "../lib/onchain/time.js";
 import { isDailyDrawTime } from "../lib/onchain/time.js";
 import { VRF_PROGRAM_ID } from "../lib/onchain/vrfProtocol.js";
@@ -26,29 +26,6 @@ function NumberPair({ numbers }) {
       ))}
     </span>
   );
-}
-
-function HistoryLink({ address, network, children }) {
-  const href = explorerAccountUrl(address, network);
-  return href ? (
-    <a
-      className="history-link"
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      {children}
-      <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-        <path
-          d="M11 4h5v5M16 4l-8 8M8 4H4v12h12v-4"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </a>
-  ) : null;
 }
 
 function RefreshIcon() {

@@ -1,17 +1,25 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Dodos from "./games/dodos/Dodos";
 import BackToTop from "./components/BackToTop";
 
+const Lemon = lazy(() => import("./games/lemon/Lemon"));
+
+function sectionFromHash() {
+  const hash = window.location.hash;
+  if (hash === "#lemon" || hash.startsWith("#lemon-")) return "lemon";
+  return hash === "#support" ? "support" : "dodos";
+}
+
 export default function App() {
-  const [activeSection, setActiveSection] = useState(() =>
-    window.location.hash === "#support" ? "support" : "dodos",
-  );
+  const [activeSection, setActiveSection] = useState(sectionFromHash);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const sidebar = useRef(null);
   const navigationToggle = useRef(null);
+  const activeGame = activeSection === "lemon" ? "lemon" : "dodos";
+  const mainId = activeGame === "lemon" ? "lemon-main-content" : "main-content";
 
   useEffect(() => {
     const mobileLayout = window.matchMedia("(max-width: 850px)");
@@ -40,17 +48,23 @@ export default function App() {
 
   useEffect(() => {
     const updateSection = () => {
-      setActiveSection(
-        window.location.hash === "#support" ? "support" : "dodos",
-      );
+      setActiveSection(sectionFromHash());
     };
     window.addEventListener("hashchange", updateSection);
     return () => window.removeEventListener("hashchange", updateSection);
   }, []);
 
+  useEffect(() => {
+    if (activeSection === "support") {
+      document.getElementById("support")?.scrollIntoView({ block: "start" });
+    } else if (["#dodos", "#lemon"].includes(window.location.hash)) {
+      window.scrollTo({ top: 0 });
+    }
+  }, [activeSection]);
+
   return (
     <div className="app">
-      <a className="skip-link" href="#main-content">
+      <a className="skip-link" href={`#${mainId}`}>
         Skip to content
       </a>
       <aside
@@ -112,11 +126,10 @@ export default function App() {
               <span className="nav-active-dot" aria-hidden="true" />
             )}
           </a>
-          <button
-            className="nav-item nav-item-disabled"
-            type="button"
-            disabled
-            aria-label="Lemon, coming in 2027"
+          <a
+            className={`nav-item${activeSection === "lemon" ? " nav-item-active" : ""}`}
+            href="#lemon"
+            aria-current={activeSection === "lemon" ? "location" : undefined}
           >
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <path
@@ -125,8 +138,38 @@ export default function App() {
                 strokeWidth="1.5"
               />
             </svg>
+            Lemon
+            {activeSection === "lemon" && (
+              <span className="nav-active-dot" aria-hidden="true" />
+            )}
+          </a>
+          <button
+            className="nav-item nav-item-disabled"
+            type="button"
+            disabled
+            aria-label="Alice in Wonderland, coming soon"
+          >
+            <svg
+              className="nav-coming-icon"
+              viewBox="0 0 20 20"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="m5.5 5 1.5 8h6l1.5-8h-9ZM3 14c0 1.7 3.1 3 7 3s7-1.3 7-3M7 10h6"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="m16 1 .8 1.7 1.7.8-1.7.8L16 5l-.8-1.7-1.7-.8 1.7-.8L16 1Z"
+                fill="var(--mint)"
+              />
+            </svg>
             <span className="nav-coming-label">
-              Lemon <small>Coming 2027</small>
+              <span>Alice in Wonderland</span>
+              <small>Coming soon</small>
             </span>
           </button>
           <a
@@ -160,14 +203,22 @@ export default function App() {
       </aside>
       <div className="app-content">
         <Header activeSection={activeSection} />
-        <main id="main-content" className="main-content">
-          <ErrorBoundary>
-            <Dodos />
+        <main id={mainId} className="main-content" tabIndex={-1}>
+          <ErrorBoundary key={activeGame}>
+            <Suspense
+              fallback={
+                <div className="panel game-loading" role="status">
+                  Loading Lemon…
+                </div>
+              }
+            >
+              {activeGame === "lemon" ? <Lemon /> : <Dodos />}
+            </Suspense>
           </ErrorBoundary>
         </main>
         <Footer />
       </div>
-      <BackToTop navigationOpen={navigationOpen} />
+      <BackToTop navigationOpen={navigationOpen} activeGame={activeGame} />
     </div>
   );
 }

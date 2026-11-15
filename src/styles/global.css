@@ -178,6 +178,7 @@ svg {
 .nav-item svg {
   width: 18px;
   height: 18px;
+  flex-shrink: 0;
 }
 .nav-item:hover:not(:disabled) {
   background: var(--panel-raised);
@@ -195,6 +196,11 @@ svg {
 .nav-coming-label {
   display: grid;
   gap: 4px;
+  min-width: 0;
+  line-height: 1.4;
+}
+.nav-coming-icon {
+  color: var(--purple-light);
 }
 .nav-coming-label small {
   color: var(--purple-light);
@@ -265,6 +271,11 @@ svg {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
+}
+.game-loading {
+  padding: 32px;
+  color: var(--muted);
+  font-size: 13px;
 }
 .panel-heading {
   display: flex;

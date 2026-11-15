@@ -104,7 +104,7 @@ export class VrfDodosClient extends DodosClient {
       options.randomnessRulesLoader ?? loadRandomnessRules;
     this.liabilityRulesLoader = options.liabilityRulesLoader ?? loadLiabilityRules;
     this.bankrollRulesLoader = options.bankrollRulesLoader ?? loadBankrollRules;
-    this.bankroll = new BankrollClient(this);
+    this.bankroll = new BankrollClient(this, options.accountSizes);
     this.drawRisk = new DrawRiskClient(this);
     this.oracle =
       options.oracle ?? new OracleClient({ connection: this.connection });
@@ -123,6 +123,22 @@ export class VrfDodosClient extends DodosClient {
         "This public demo requires Solana Devnet. No transaction was sent.",
       );
   }
+
+  get expectedRulesRevision() { return 6; }
+
+  validNumbers(numbers) { return validNumbers(numbers); }
+
+  deriveOracleSeed(programId, drawAddress, nonce) {
+    return deriveOracleSeed(programId, drawAddress, nonce);
+  }
+
+  winningNumbersFromRandomness(randomness) {
+    return winningNumbersFromRandomness(randomness);
+  }
+
+  assertPurchaseQuote() {}
+
+  assertOracleQuote() {}
 
   async getRandomnessRules({ fresh = false } = {}) {
     return this.randomnessRulesLoader({
@@ -191,7 +207,7 @@ export class VrfDodosClient extends DodosClient {
   }
 
   async getPurchaseQuote(numbers, { drawTime, config } = {}) {
-    if (!validNumbers(numbers)) throw new Error("Choose two different numbers first.");
+    if (!this.validNumbers(numbers)) throw new Error("Choose two different numbers first.");
     const active = config ?? await this.getConfig();
     if (!active?.randomnessVerified) throw new Error("Wait for the verified draw rules.");
     if (!active.bankrollRules) throw new Error("The claim-funded prize rules could not be verified. New purchases are paused.");
@@ -265,7 +281,7 @@ export class VrfDodosClient extends DodosClient {
       throw new Error("The on-chain draw record could not be verified.");
     const final = account.status === 2;
     const numbers = Array.from(account.numbers);
-    if (final && !validNumbers(numbers))
+    if (final && !this.validNumbers(numbers))
       throw new Error("The recorded draw numbers are invalid.");
     if (
       account.status !== 0 &&
@@ -422,7 +438,7 @@ export class VrfDodosClient extends DodosClient {
     this.requireSigner();
     const recovered = await this.recoverPendingPurchase();
     if (recovered) return recovered;
-    if (!validNumbers(numbers))
+    if (!this.validNumbers(numbers))
       throw new TypeError(
         `Choose two different numbers from ${MIN_NUMBER} to ${MAX_NUMBER}.`,
       );
@@ -440,7 +456,7 @@ export class VrfDodosClient extends DodosClient {
     )
       throw new RangeError("Choose a future draw within 24 hours.");
     const config = options.config ?? (await this.getConfig());
-    if (!config?.randomnessVerified || config.rulesRevision !== 6)
+    if (!config?.randomnessVerified || config.rulesRevision !== this.expectedRulesRevision)
       throw new Error(
         "Wait for the verified public VRF game rules before purchasing.",
       );
@@ -450,6 +466,7 @@ export class VrfDodosClient extends DodosClient {
     const quote = await this.getPurchaseQuote(selection, { drawTime, config: { ...config, bankrollRules } });
     if (!quote?.bankroll || !quote.canPurchase)
       throw new Error("Refresh the entry and account rent quote before buying.");
+    this.assertPurchaseQuote(quote, options);
     this.rememberPurchase({
       id: String(nonce),
       numbers: selection,
@@ -547,11 +564,12 @@ export class VrfDodosClient extends DodosClient {
         "The randomness request window has ended. Unresolved tickets can be refunded.",
       );
     const quote = await this.getOracleQuote();
+    this.assertOracleQuote(quote, { ...options, drawTime: Number(drawTime) });
     let nonce = await this.requestNonce(drawTime);
     let seed;
     let request;
     for (let attempt = 0; attempt < 2; attempt++) {
-      seed = await deriveOracleSeed(
+      seed = await this.deriveOracleSeed(
         this.program.programId,
         draw.address,
         nonce,
@@ -653,7 +671,7 @@ export class VrfDodosClient extends DodosClient {
       throw new Error(
         "Verified fulfilled randomness is required to complete this draw.",
       );
-    const winningNumbers = await winningNumbersFromRandomness(proof.randomness);
+    const winningNumbers = await this.winningNumbersFromRandomness(proof.randomness);
     const transaction = new Transaction().add(
       ...prefixInstructions,
       await this.program.methods
@@ -747,7 +765,7 @@ export class VrfDodosClient extends DodosClient {
           snapshot[9] !== 0 ||
           snapshot.subarray(10).some((byte) => byte !== 0) ||
           snapshot.readBigUInt64LE(1) === 0n ||
-          !validNumbers(Array.from(account.numbers)) ||
+          !this.validNumbers(Array.from(account.numbers)) ||
           account.numbers.every(
             (number, index) => number === winningNumbers[index],
           )
@@ -1032,7 +1050,7 @@ export class VrfDodosClient extends DodosClient {
     const result = await this.getResult(ticket.drawTime);
     if (
       result?.isPublished &&
-      validNumbers(ticket.numbers) &&
+      this.validNumbers(ticket.numbers) &&
       ticket.numbers.some((number, index) => number !== result.numbers[index])
     ) return this.releaseLosingInstruction(ticket);
     if (version === 4) {
@@ -1088,7 +1106,7 @@ export class VrfDodosClient extends DodosClient {
     this.requireSigner();
     if (await this.ticketReserveVersion(ticket) === 4) {
       const result = await this.getResult(ticket.drawTime);
-      const loss = result?.isPublished && validNumbers(ticket.numbers) &&
+      const loss = result?.isPublished && this.validNumbers(ticket.numbers) &&
         ticket.numbers.some((number, index) => number !== result.numbers[index]);
       if (!loss) {
         const funding = await this.getClaimFunding(ticket);
@@ -1113,7 +1131,7 @@ export class VrfDodosClient extends DodosClient {
     const versions = await Promise.all(tickets.map(async (ticket) => {
       const reserveVersion = await this.ticketReserveVersion(ticket);
       const result = reserveVersion === 4 ? await this.getResult(ticket.drawTime) : null;
-      const loss = reserveVersion === 4 && result?.isPublished && validNumbers(ticket.numbers) &&
+      const loss = reserveVersion === 4 && result?.isPublished && this.validNumbers(ticket.numbers) &&
         ticket.numbers.some((number, index) => number !== result.numbers[index]);
       return { ...ticket, reserveVersion, bankrollLoss: Boolean(loss) };
     }));

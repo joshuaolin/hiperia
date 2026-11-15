@@ -4,24 +4,34 @@ import assert from "node:assert/strict";
 import { PublicKey } from "@solana/web3.js";
 
 const vrf = process.argv.includes("--vrf");
+const lemon = process.argv.includes("--lemon");
+if (lemon && vrf) throw new Error("Select one program ABI target.");
 const frontend = JSON.parse(
   readFileSync(
-    vrf ? "src/idl/hiperia_vrf.json" : "src/idl/hiperia_program.json",
+    lemon
+      ? "src/idl/hiperia_lemon.json"
+      : vrf
+        ? "src/idl/hiperia_vrf.json"
+        : "src/idl/hiperia_program.json",
     "utf8",
   ),
 );
 const compiled = JSON.parse(
   readFileSync(
-    vrf
-      ? "hiperia_program/target/vrf-build/remote-idl.json"
-      : "hiperia_program/target/build/remote-idl.json",
+    lemon
+      ? "hiperia_program/target/lemon-build/remote-idl.json"
+      : vrf
+        ? "hiperia_program/target/vrf-build/remote-idl.json"
+        : "hiperia_program/target/build/remote-idl.json",
     "utf8",
   ),
 );
 const binary = readFileSync(
-  vrf
-    ? "hiperia_program/target/deploy/hiperia_vrf.so"
-    : "hiperia_program/target/deploy/remote-compiled.so",
+  lemon
+    ? "hiperia_program/target/deploy/hiperia_lemon.so"
+    : vrf
+      ? "hiperia_program/target/deploy/hiperia_vrf.so"
+      : "hiperia_program/target/deploy/remote-compiled.so",
 );
 assert.equal(binary.subarray(0, 4).toString("hex"), "7f454c46");
 assert.ok(

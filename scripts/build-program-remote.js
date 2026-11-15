@@ -1,26 +1,37 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { PublicKey } from "@solana/web3.js";
+import { normalizeLegacyIdl } from "./normalize-legacy-idl.js";
 
+const lemon = process.argv.includes("--lemon");
+const vrf = process.argv.includes("--vrf");
+if (lemon && vrf) throw new Error("Select one program build target.");
 const source = readFileSync(
-  process.argv.includes("--vrf")
-    ? "hiperia_program/programs/hiperia_vrf/src/lib.rs"
-    : "hiperia_program/programs/hiperia_program/src/lib.rs",
+  lemon
+    ? "hiperia_program/programs/hiperia_lemon/src/lib.rs"
+    : vrf
+      ? "hiperia_program/programs/hiperia_vrf/src/lib.rs"
+      : "hiperia_program/programs/hiperia_program/src/lib.rs",
   "utf8",
 );
-const vrf = process.argv.includes("--vrf");
-const buildDirectory = vrf
-  ? "hiperia_program/target/vrf-build"
-  : "hiperia_program/target/build";
-const binaryPath = vrf
-  ? "hiperia_program/target/deploy/hiperia_vrf.so"
-  : "hiperia_program/target/deploy/remote-compiled.so";
-const idl = JSON.parse(
-  readFileSync(
-    vrf ? "src/idl/hiperia_vrf.json" : "src/idl/hiperia_program.json",
-    "utf8",
-  ),
-);
+const buildDirectory = lemon
+  ? "hiperia_program/target/lemon-build"
+  : vrf
+    ? "hiperia_program/target/vrf-build"
+    : "hiperia_program/target/build";
+const binaryPath = lemon
+  ? "hiperia_program/target/deploy/hiperia_lemon.so"
+  : vrf
+    ? "hiperia_program/target/deploy/hiperia_vrf.so"
+    : "hiperia_program/target/deploy/remote-compiled.so";
+const idl = lemon
+  ? { address: source.match(/declare_id!\("([1-9A-HJ-NP-Za-km-z]+)"\)/)?.[1] }
+  : JSON.parse(
+      readFileSync(
+        vrf ? "src/idl/hiperia_vrf.json" : "src/idl/hiperia_program.json",
+        "utf8",
+      ),
+    );
 const endpoint = "https://api.solpg.io";
 if (!source.includes(`declare_id!("${idl.address}")`))
   throw new Error("Synchronize the program ID before building.");
@@ -69,6 +80,12 @@ writeFileSync(
   `${buildDirectory}/remote-idl.json`,
   JSON.stringify(result.idl, null, 2),
 );
+if (lemon) {
+  writeFileSync(
+    "src/idl/hiperia_lemon.json",
+    JSON.stringify(normalizeLegacyIdl(result.idl, idl.address), null, 2) + "\n",
+  );
+}
 writeFileSync(
   `${buildDirectory}/build-manifest.json`,
   JSON.stringify(

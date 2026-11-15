@@ -1,0 +1,950 @@
+.lemon-dashboard {
+  --lemon: #e6f582;
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.lemon-dashboard .page-heading h1 > span {
+  color: var(--lemon);
+}
+
+.lemon-dashboard .page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.lemon-dashboard .page-heading h1 {
+  margin: 9px 0;
+  font-size: 42px;
+  line-height: 1.1;
+  letter-spacing: -2px;
+}
+
+.lemon-dashboard .page-description {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.lemon-page-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+}
+
+.lemon-page-links a {
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.lemon-page-links a:hover {
+  color: var(--lemon);
+}
+
+.lemon-banner {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 23px 28px;
+  border: 1px solid rgba(230, 245, 130, 0.2);
+  border-radius: 12px;
+  background: linear-gradient(
+    110deg,
+    rgba(230, 245, 130, 0.08),
+    rgba(153, 69, 255, 0.07)
+  );
+}
+
+.lemon-banner-fruit {
+  font-size: 48px;
+  line-height: 1;
+}
+
+.lemon-banner-title {
+  flex: 1;
+}
+
+.lemon-banner-title span,
+.lemon-banner-prize span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.lemon-banner-title strong {
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.lemon-banner-prize {
+  min-width: 100px;
+  padding-left: 24px;
+  border-left: 1px solid var(--border);
+}
+
+.lemon-banner-prize strong {
+  color: var(--lemon);
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lemon-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+
+.lemon-panel {
+  min-width: 0;
+  padding: 25px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  scroll-margin-top: 100px;
+}
+
+.lemon-panel h2 {
+  margin: 6px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+}
+
+.lemon-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lemon-odds {
+  color: var(--lemon);
+  background: rgba(230, 245, 130, 0.07);
+  border: 1px solid rgba(230, 245, 130, 0.2);
+  padding: 6px 9px;
+  border-radius: 6px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.lemon-subtitle {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+  margin-top: 13px;
+}
+
+.lemon-slots {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.lemon-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 13px 5px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(153, 69, 255, 0.035);
+  cursor: pointer;
+  color: var(--text);
+}
+
+.lemon-slot small {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.8px;
+}
+
+.lemon-slot > span {
+  display: grid;
+  place-items: center;
+  min-height: 69px;
+  font-size: 45px;
+  line-height: 1.3;
+}
+
+.lemon-slot strong {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.lemon-slot em {
+  color: var(--muted);
+  font-size: 9px;
+  font-style: normal;
+  margin-top: 4px;
+}
+
+.lemon-slot-active {
+  border-color: var(--lemon);
+  background: rgba(230, 245, 130, 0.045);
+  box-shadow: 0 0 0 2px rgba(230, 245, 130, 0.045);
+}
+
+.lemon-fruit-picker {
+  padding: 0;
+  border: 0;
+  margin: 22px 0;
+  min-width: 0;
+}
+
+.lemon-fruit-picker legend {
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 12px;
+}
+
+.lemon-fruit-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.lemon-fruit-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  min-height: 76px;
+  padding: 6px 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.lemon-fruit-option > span {
+  font-size: 25px;
+}
+
+.lemon-fruit-option small {
+  font-size: 9px;
+  margin-top: 4px;
+}
+
+.lemon-fruit-option em {
+  font-size: 9px;
+  color: var(--muted);
+  font-style: normal;
+  margin-top: 3px;
+}
+
+.lemon-fruit-option:hover,
+.lemon-fruit-option-selected {
+  border-color: var(--mint);
+  background: rgba(20, 241, 149, 0.04);
+}
+
+.lemon-mode-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.lemon-mode-picker button {
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: transparent;
+  padding: 13px 12px;
+  cursor: pointer;
+}
+
+.lemon-mode-picker strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.lemon-mode-picker span {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.7;
+  margin-top: 4px;
+}
+
+.lemon-mode-picker .lemon-mode-active {
+  border-color: var(--purple);
+  background: rgba(153, 69, 255, 0.07);
+}
+
+.lemon-draw-label,
+.lemon-result-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.lemon-draw-label {
+  margin-top: 21px;
+}
+
+.lemon-dashboard select,
+.lemon-dashboard input[type="date"] {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 43px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  color-scheme: dark;
+}
+
+.lemon-draw-countdown {
+  margin: 12px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.lemon-draw-countdown strong {
+  margin-left: 8px;
+  color: var(--lemon);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.lemon-checkout {
+  margin: 22px 0 0;
+}
+
+.lemon-checkout > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 8px 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.lemon-checkout dt {
+  color: var(--muted);
+}
+
+.lemon-checkout dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.lemon-checkout .lemon-checkout-total {
+  margin-top: 9px;
+  padding-top: 15px;
+  border-top: 1px solid var(--border);
+}
+
+.lemon-checkout-total dd {
+  color: var(--mint);
+}
+
+.lemon-purchase-note {
+  border: 1px solid rgba(153, 69, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(153, 69, 255, 0.04);
+  padding: 14px;
+  margin-top: 20px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.8;
+}
+
+.lemon-purchase-note strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.lemon-purchase-note p {
+  margin-top: 7px;
+}
+
+.lemon-buy-button {
+  width: 100%;
+  margin-top: 18px;
+  min-height: 46px;
+}
+
+.lemon-side-column {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.lemon-disclosure {
+  padding: 0;
+}
+
+.lemon-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 102px;
+  padding: 24px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.lemon-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.lemon-disclosure > summary > span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.lemon-disclosure > summary strong {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+}
+
+.lemon-disclosure-end {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.lemon-disclosure-end > svg {
+  width: 19px;
+  height: 19px;
+}
+
+.lemon-disclosure[open] .lemon-disclosure-end > svg {
+  transform: rotate(180deg);
+}
+
+.lemon-disclosure-content {
+  padding: 0 24px 24px;
+  min-width: 0;
+}
+
+.lemon-ticket-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.lemon-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.lemon-tabs > button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.lemon-tabs > button span {
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+.lemon-tabs .lemon-tab-active {
+  background: rgba(153, 69, 255, 0.16);
+  color: var(--text);
+}
+
+.lemon-empty {
+  padding: 26px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.lemon-ticket-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.lemon-ticket {
+  padding: 18px 0;
+  border-top: 1px solid var(--border);
+}
+
+.lemon-ticket-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.lemon-ticket-heading strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.lemon-ticket-heading > div > span {
+  display: block;
+  margin-top: 6px;
+  font-size: 10px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+.lemon-ticket-state {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 7px;
+  font-size: 9px;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.lemon-ticket-state-win {
+  color: var(--mint);
+  border-color: rgba(20, 241, 149, 0.3);
+  background: rgba(20, 241, 149, 0.04);
+}
+
+.lemon-ticket-state-loss {
+  color: #ef9ba8;
+  border-color: rgba(239, 155, 168, 0.2);
+}
+
+.lemon-triple {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.lemon-fruit {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.lemon-fruit small {
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.lemon-triple-small .lemon-fruit {
+  font-size: 22px;
+  padding: 5px;
+}
+
+.lemon-ticket-prize,
+.lemon-recorded-result {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.8;
+}
+
+.lemon-recorded-result {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.lemon-ticket-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.lemon-ticket-actions .button {
+  min-height: 38px;
+  font-size: 11px;
+}
+
+.lemon-funding-wait,
+.lemon-pending-oracle {
+  font-size: 11px;
+  line-height: 1.8;
+  color: var(--lemon);
+  margin-top: 12px;
+}
+
+.lemon-ticket-history {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 10px;
+}
+
+.lemon-chain-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  max-width: 100%;
+  color: var(--mint);
+  text-decoration: none;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.lemon-chain-link svg {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+}
+
+.lemon-chain-link:hover {
+  color: var(--lemon);
+}
+
+.lemon-dashboard :is(a, button, select, input, summary):focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 4px;
+}
+
+.lemon-how ol {
+  margin: 24px 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.lemon-how li {
+  display: flex;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.lemon-how li > span {
+  color: var(--lemon);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.9;
+}
+
+.lemon-how li strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.lemon-how li p {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.9;
+}
+
+.lemon-message {
+  margin: 0;
+  padding: 14px 18px;
+  border: 1px solid rgba(153, 69, 255, 0.25);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.lemon-message-error {
+  border-color: rgba(239, 155, 168, 0.3);
+  color: #ef9ba8;
+}
+
+.lemon-result-filters {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 22px 0;
+}
+
+.lemon-result-filters label {
+  flex: 1;
+  min-width: 140px;
+}
+
+.lemon-results-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.lemon-results-table {
+  width: 100%;
+  min-width: 650px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.lemon-results-table .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.lemon-results-table th,
+.lemon-results-table td {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.lemon-results-table th {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+}
+
+.lemon-results-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.lemon-result-links {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.lemon-result-links .lemon-chain-link {
+  white-space: nowrap;
+}
+
+.lemon-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.lemon-pagination .button {
+  font-size: 10px;
+  padding: 8px 11px;
+}
+
+.lemon-reveal-review > p {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.lemon-guide-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+}
+
+.lemon-guide-content h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.lemon-guide-content p {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.9;
+}
+
+@media (max-width: 1100px) {
+  .lemon-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lemon-fruit-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .lemon-slot > span {
+    font-size: 52px;
+  }
+}
+
+@media (max-width: 600px) {
+  .lemon-dashboard {
+    gap: 18px;
+  }
+
+  .lemon-dashboard .page-heading {
+    flex-wrap: wrap;
+  }
+
+  .lemon-dashboard .page-heading h1 {
+    font-size: 36px;
+  }
+
+  .lemon-banner {
+    flex-wrap: wrap;
+    gap: 18px;
+    padding: 20px;
+  }
+
+  .lemon-banner-fruit {
+    font-size: 38px;
+  }
+
+  .lemon-banner-title {
+    flex-basis: calc(100% - 60px);
+  }
+
+  .lemon-banner-title strong {
+    font-size: 16px;
+  }
+
+  .lemon-banner-prize {
+    flex: 1;
+    border: 0;
+    padding: 0;
+  }
+
+  .lemon-banner-prize + .lemon-banner-prize {
+    border-left: 1px solid var(--border);
+    padding-left: 18px;
+  }
+
+  .lemon-banner-prize strong {
+    font-size: 18px;
+  }
+
+  .lemon-panel {
+    padding: 19px;
+  }
+
+  .lemon-disclosure {
+    padding: 0;
+  }
+
+  .lemon-disclosure > summary {
+    min-height: 94px;
+    padding: 19px;
+  }
+
+  .lemon-disclosure-content {
+    padding: 0 19px 19px;
+  }
+
+  .lemon-disclosure > summary strong,
+  .lemon-panel h2 {
+    font-size: 19px;
+  }
+
+  .lemon-slots {
+    gap: 7px;
+  }
+
+  .lemon-slot > span {
+    min-height: 58px;
+    font-size: 36px;
+  }
+
+  .lemon-slot strong {
+    font-size: 10px;
+  }
+
+  .lemon-fruit-grid {
+    gap: 5px;
+  }
+
+  .lemon-fruit-option {
+    min-height: 73px;
+  }
+
+  .lemon-fruit-option > span {
+    font-size: 23px;
+  }
+
+  .lemon-fruit-option small {
+    font-size: 9px;
+    letter-spacing: -0.4px;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .lemon-mode-picker button {
+    padding: 12px 9px;
+  }
+
+  .lemon-mode-picker span {
+    font-size: 8px;
+  }
+
+  .lemon-guide-content {
+    grid-template-columns: 1fr;
+  }
+
+  .lemon-result-filters label {
+    min-width: 100%;
+  }
+
+  .lemon-result-filters .button {
+    width: 100%;
+  }
+
+  .lemon-checkout > div {
+    gap: 10px;
+    font-size: 10px;
+  }
+
+  .lemon-tabs > button {
+    min-height: 40px;
+  }
+
+  .lemon-page-links {
+    gap: 11px 18px;
+  }
+
+  .lemon-page-links a {
+    font-size: 11px;
+  }
+}
