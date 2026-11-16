@@ -2,7 +2,11 @@
 
 Lemon is an ordered three-digit lottery shown as fruit symbols. Each position has ten equally likely choices, digits 0 through 9, and repeats are allowed. A ticket wins only when all three positions match in order. There are `10 × 10 × 10 = 1,000` outcomes, so each exact triple has a 0.1% chance under uniform unpredictable randomness. Three lemons are the triple `000`; they have the same chance and payout as every other exact triple. The title and fruit presentation do not add scatter bonuses, jackpots or extra payout paths.
 
-Daily draws share one result at 02:00, 06:00, 10:00, 14:00, 18:00 and 22:00, UTC+8. Quick draws use a separate selected timestamp for players who want an earlier result. A ticket enters one exact draw. Repeated entries and repeated fruit symbols are allowed.
+The November 16 release changes new Lemon daily purchases to 03:00, 07:00, 11:00, 15:00, 19:00 and 23:00, UTC+8. The interval remains 14,400 seconds, with offset 10,800. Quick draws use a separate selected timestamp for players who want an earlier result. A ticket enters one exact draw. Repeated entries and repeated fruit symbols are allowed. Dodos retains its existing 02/06/10/14/18/22 schedule.
+
+Accepted tickets retain their original draw type, paid entry and fixed prize. An old 02-hour Lemon daily ticket remains a daily ticket even though that timestamp is no longer offered for new daily purchases; an accepted 03-hour quick ticket keeps its original quick prize. New purchases at the retired daily seconds (`timestamp % 14400 === 7200`) reject before payment, even for an unused draw. This prevents a cached old client from quoting a 0.00625 SOL daily entry and being charged the 0.0072 SOL quick entry after upgrade. Quick selection skips both current daily seconds and retired daily seconds. Claims, eligible refunds, result verification and their immutable snapshots are unchanged.
+
+The play area, ticket cards and result rows show fruit symbols without numeric overlays. The game guide lists the public digit mapping: Lemon 0, Cherry 1, Orange 2, Grape 3, Watermelon 4, Strawberry 5, Pineapple 6, Apple 7, Peach 8 and Kiwi 9. The badge indicates on-chain verification; the probability explanation, symbol mapping and program link remain in the guide. There is one game guide rather than a second introduction repeating the same rules.
 
 ## Prices and expected returns
 
@@ -40,9 +44,29 @@ Sampling accepts little-endian 16-bit values below 65,000 and takes the value mo
 
 Before enabling purchases the client verifies Lemon's distinct 58-byte `get_rules` revision 1, public access, pinned randomness metadata and exact nine-byte bankroll rules. It binds a fresh entry/rent quote to the wallet, program, triple and draw and reviews actual oracle costs before a new request. The Devnet genesis check blocks Mainnet writes. Read-only RPC simulation permits only the target program's exact metadata instructions and response sizes. A rules-read failure pauses purchases while preserving loaded history and valid claim paths.
 
+Reveal cost review appears beside its ticket. Entries sharing a source program and draw timestamp share one reveal action, oracle request and recorded result. An approval is consumed synchronously before the first asynchronous step; cancelled, expired, failed or context-changed approvals cannot be reused through a stale callback. Pending and finalized draws do not show a new oracle-cost approval. Finalized draws recover the existing result without another request, fee or result row.
+
+Confirmed action progress and advances learned from actual account refreshes are retained monotonically for the same wallet and endpoint. A stale RPC snapshot cannot restore an earlier draw state or remove a known finalized result. Fresh complete oracle fields replace partial local request progress. This display cache never marks a ticket Paid, settled or refunded; only actual confirmed on-chain state can do that. There is no automatic transaction resend, wallet signing or payout keeper.
+
 ## Build and test evidence
 
-The November 15, 2026 build used the existing remote compiler at `https://api.solpg.io`. The local standalone crate pins Anchor 0.31.1, but the remote compiler selects its own legacy Anchor dependencies. The ABI was compared field by field against the normalized frontend IDL: 13 instructions, 5 accounts and 29 errors.
+### November 16 release checks
+
+The schedule and admission-guard build uses the existing remote compiler at `https://api.solpg.io`. Its normalized ABI remains unchanged: 13 instructions, 5 accounts, 29 errors, a 58-byte revision 1 rules response, and the same account layouts and PDA seeds. This build was activated and its deployed bytes verified on November 16. Two new-hour daily purchases, a quick purchase, actual ORAO fulfillment and a repeat completion with no additional signature or oracle fee passed; original ticket snapshots remained unchanged. See [the live upgrade and release evidence](./UAT-AUDIT.md#lemon-reveal-and-schedule-verification-november-16-2026).
+
+- Source SHA-256: `1ebc2c9435bc3a6a26622b26ba36535a8991b5053eb0ea6608a29ae50674f527`.
+- ELF SHA-256: `dfb312c9e3297dfde94f40ea07ddf563cd374168321c41a80107159ddd757ed2`.
+- ELF length: 469,400 bytes.
+- 41 actual compiled BPF checks passed under Linux LiteSVM 1.6.2, executing 101 synthetic transactions: 73 successful and 28 expected rejections. The temporary protected runner and its bearer token were removed.
+- The compatibility checks execute purchases with the previous November 15 ELF, load the new ELF into the same VM, then verify the accepted old daily 4.75 SOL claim and 0.00625 SOL refund, and an accepted new-hour historical quick 2.5 SOL claim. Replays reject; all unrelated entry holds remain protected. An unused retired daily timestamp rejects a stale-client purchase before payment.
+- 14 Lemon JavaScript client/protocol/proxy tests, eight reveal-state/schedule helper tests and 22 actual-hook browser scenarios passed. They cover current offer classification, retired seconds, consumed approvals, context changes, same-draw entries, stale refreshes, confirmation failures and preserved claims. Browser fixtures do not use private keys or send live transactions.
+- The 17 native Rust unit tests remain unexecuted on this Windows environment and are not counted as passed.
+
+The remote compiler selects its own legacy Anchor dependencies; byte and ABI verification do not establish a reproducible build of the locally pinned Anchor 0.31.1 toolchain. Synthetic oracle-owned fixtures establish neither live ORAO fulfillment nor a live winning payout.
+
+### Historical November 15 build
+
+The original November 15, 2026 build used the same remote compiler. Its ABI was compared field by field against the normalized frontend IDL: 13 instructions, 5 accounts and 29 errors.
 
 - Source SHA-256: `bd8366fe835b4a85f220c9da53ce8fd0d92b5d227bba2d6d11abd5aa18a03135`.
 - ELF SHA-256: `3e0f9b01fdc4d73ff6ce0a435a4b55dcaf3192f9eae457f266c43478a5dd6e2b`.
@@ -57,6 +81,7 @@ The BPF suite covers multiple daily/quick purchases without capital depletion, r
 npm run program:build:lemon
 npm run program:verify:lemon
 node --test src/lib/onchain/LemonClient.test.js
+node --test src/games/lemon/revealState.test.js src/games/lemon/lemonSchedule.test.js
 npm test
 ```
 
@@ -66,7 +91,7 @@ On a Linux environment with the native dependency `litesvm@1.6.2` and the reposi
 npm run test:contract:lemon
 ```
 
-The runtime suite loads the compiled Lemon ELF and uses synthetic genesis accounts only. It does not sign live wallet transactions. A local pinned Rust toolchain can separately run the included unit tests with `cargo test --manifest-path hiperia_program/programs/hiperia_lemon/Cargo.toml`.
+The runtime suite loads the compiled Lemon ELF and uses synthetic genesis accounts only. Set `HIPERIA_LEMON_PREVIOUS_ELF` to a verified copy of the original November 15 ELF to include the old-program purchase/upgrade compatibility checks; its SHA-256 must be `3e0f9b01fdc4d73ff6ce0a435a4b55dcaf3192f9eae457f266c43478a5dd6e2b`. The suite does not sign live wallet transactions. A local pinned Rust toolchain can separately run the included unit tests with `cargo test --manifest-path hiperia_program/programs/hiperia_lemon/Cargo.toml`.
 
 ## Live verification status
 

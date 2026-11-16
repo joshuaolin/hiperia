@@ -16,6 +16,9 @@ const elf = resolve(
   process.env.HIPERIA_LEMON_ELF ??
     "hiperia_program/target/deploy/hiperia_lemon.so",
 );
+const previousElf = process.env.HIPERIA_LEMON_PREVIOUS_ELF
+  ? resolve(root, process.env.HIPERIA_LEMON_PREVIOUS_ELF)
+  : null;
 const scratch = resolve(
   process.env.HIPERIA_BPF_SCRATCH ?? resolve(root, ".local/lemon-bpf"),
   `${Date.now()}-${process.pid}`,
@@ -34,7 +37,7 @@ const cost = 6_250_000n,
   quickCost = 7_200_000n,
   quickPrize = 2_500_000_000n;
 const interval = 14_400,
-  offset = 7_200;
+  offset = 10_800;
 const now = Math.floor(Date.now() / 1000);
 const daily = Math.floor((now - offset) / interval) * interval + offset;
 const hash = (value) => createHash("sha256").update(value).digest();
@@ -461,6 +464,9 @@ async function run() {
       assert.equal(data.readBigUInt64LE(16), cost);
       assert.equal(data.readBigUInt64LE(24), quickPrize);
       assert.equal(data.readBigUInt64LE(32), prize);
+      assert.deepEqual([...data.subarray(40, 46)], [3, 7, 11, 15, 19, 23]);
+      assert.equal(data.readUInt32LE(46), interval);
+      assert.equal(data.readUInt32LE(50), offset);
     },
   );
   await check(
@@ -795,6 +801,152 @@ async function run() {
       assert.equal(account(pending.tickets[2].address).data[64], 0);
     },
   );
+  if (previousElf) {
+    const oldDaily = purchase(daily + 2 * interval - 3_600, [3, 5, 0]);
+    const oldRefund = purchase(daily + 3 * interval - 3_600, [0, 0, 0]);
+    const oldQuick = purchase(daily + 4 * interval, [4, 2, 3]);
+    await check(
+      "the previous ELF accepts old-hour daily and new-hour quick snapshots before upgrade",
+      async () => {
+        svm.addProgramFromFile(program.toBuffer(), previousElf);
+        for (const [entry, paid, payout, isDaily] of [
+          [oldDaily, cost, prize, true],
+          [oldRefund, cost, prize, true],
+          [oldQuick, quickCost, quickPrize, false],
+        ]) {
+          await send(entry.ix);
+          const ticket = account(entry.ticket).data;
+          const draw = account(entry.draw).data;
+          assert.equal(ticket.readBigUInt64LE(56), paid);
+          assert.equal(ticket.readBigUInt64LE(70), payout);
+          assert.equal(draw[165], Number(isDaily));
+        }
+        svm.addProgramFromFile(program.toBuffer(), elf);
+      },
+    );
+    await rejects(
+      "the schedule upgrade rejects mixing new quick pricing into an accepted old daily draw",
+      purchase(oldDaily.time).ix,
+      /BadDrawTime/,
+      [oldDaily.draw, oldDaily.ledger],
+    );
+    await rejects(
+      "the schedule upgrade rejects mixing new daily pricing into an accepted old quick draw",
+      purchase(oldQuick.time).ix,
+      /InvalidTicketCost/,
+      [oldQuick.draw, oldQuick.ledger],
+    );
+    await check(
+      "new daily hours receive their actual current offer after upgrade",
+      async () => {
+        for (const [time, paid, payout, isDaily] of [
+          [daily + 5 * interval, cost, prize, true],
+        ]) {
+          const entry = purchase(time, [9, 9, 9]);
+          const before = spendable();
+          await send(entry.ix);
+          const ticket = account(entry.ticket).data;
+          const draw = account(entry.draw).data;
+          assert.equal(ticket.readBigUInt64LE(56), paid);
+          assert.equal(ticket.readBigUInt64LE(70), payout);
+          assert.equal(draw[165], Number(isDaily));
+          assert.equal(spendable(), before);
+        }
+      },
+    );
+    await rejects(
+      "unused previous daily hours reject stale-client purchases instead of charging an unreviewed quick fee",
+      purchase(daily + 5 * interval - 3_600).ix,
+      /BadDrawTime/,
+    );
+    const afterTimeout = oldQuick.time + 86_401;
+    svm.setClock(
+      new native.Clock(2n, BigInt(afterTimeout), 0n, 0n, BigInt(afterTimeout)),
+    );
+    await check(
+      "a ticket bought by the previous ELF refunds exactly its old daily entry after upgrade",
+      async () => {
+        const before = balance(payer.publicKey);
+        const vaultBefore = balance(vault);
+        const reservedBefore = vaultReserved();
+        const ix = refundIx(
+          { ...oldRefund, status: 0, tickets: [{ address: oldRefund.ticket }] },
+          { address: oldRefund.ticket },
+          payer.publicKey,
+        );
+        await send(ix);
+        assert.equal(balance(vault), vaultBefore - cost);
+        assert.equal(vaultReserved(), reservedBefore - cost);
+        assert.equal(balance(payer.publicKey), before + cost - 5_000n);
+        assert.equal(account(oldRefund.ticket).data[64], 1);
+        assert.equal(account(oldRefund.ticket).data[78], 1);
+        await assert.rejects(send(ix), /AlreadySettled/);
+      },
+    );
+    await send(
+      SystemProgram.transfer({
+        fromPubkey: payer.publicKey,
+        toPubkey: vault,
+        lamports: 10_000_000_000,
+      }),
+    );
+    for (const [entry, winning, payout] of [
+      [oldDaily, [3, 5, 0], prize],
+      [oldQuick, [4, 2, 3], quickPrize],
+    ]) {
+      await check(
+        `a previous-ELF ${payout === prize ? "daily" : "quick"} winner retains its immutable snapshot payout after upgrade`,
+        async () => {
+          const accepted = account(entry.draw);
+          const seed = hash(`synthetic-upgrade-proof:${entry.time}`);
+          const [client] = pda(Buffer.from("oracle-client"), i64(entry.time));
+          const [request] = PublicKey.findProgramAddressSync(
+            [Buffer.from("orao-vrf-randomness-request"), seed],
+            oracle,
+          );
+          const data = Buffer.from(accepted.data);
+          data[17] = 1;
+          seed.copy(data, 26);
+          request.toBuffer().copy(data, 58);
+          client.toBuffer().copy(data, 90);
+          payer.publicKey.toBuffer().copy(data, 122);
+          i64(entry.time).copy(data, 154);
+          seedAccount(entry.draw, program, data, accepted.lamports);
+          const proof = Buffer.alloc(137);
+          Buffer.from([139, 239, 184, 215, 227, 86, 191, 226]).copy(proof);
+          proof[8] = 1;
+          client.toBuffer().copy(proof, 9);
+          seed.copy(proof, 41);
+          proof.writeUInt16LE(rank(winning), 73);
+          seedAccount(request, oracle, proof);
+          const synthetic = { ...entry, request };
+          const before = balance(vault);
+          const protectedBefore = vaultReserved();
+          const recipientBefore = balance(payer.publicKey);
+          await send(finalIx(synthetic));
+          await send(
+            settleIx(synthetic, { address: entry.ticket }, payer.publicKey),
+          );
+          assert.equal(balance(vault), before - payout);
+          assert.equal(
+            vaultReserved(),
+            protectedBefore - (entry === oldDaily ? cost : quickCost),
+          );
+          assert.equal(
+            balance(payer.publicKey),
+            recipientBefore + payout - 10_000n,
+          );
+          assert.equal(account(entry.ticket).data[64], 1);
+          await assert.rejects(
+            send(
+              settleIx(synthetic, { address: entry.ticket }, payer.publicKey),
+            ),
+            /AlreadySettled/,
+          );
+        },
+      );
+    }
+  }
 }
 
 let failure;
@@ -815,6 +967,9 @@ try {
     backend: "litesvm-1.6.2",
     elf,
     elfSha256: hash(readFileSync(elf)).toString("hex"),
+    previousElfSha256: previousElf
+      ? hash(readFileSync(previousElf)).toString("hex")
+      : null,
     passed: results.length,
     failed: failure ? String(failure) : null,
     failureStack: failure?.stack ?? null,

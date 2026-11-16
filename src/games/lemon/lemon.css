@@ -69,7 +69,6 @@
   flex: 1;
 }
 
-.lemon-banner-title span,
 .lemon-banner-prize span {
   display: block;
   color: var(--muted);
@@ -124,7 +123,7 @@
   gap: 12px;
 }
 
-.lemon-odds {
+.lemon-chain-badge {
   color: var(--lemon);
   background: rgba(230, 245, 130, 0.07);
   border: 1px solid rgba(230, 245, 130, 0.2);
@@ -179,13 +178,6 @@
   font-weight: 500;
 }
 
-.lemon-slot em {
-  color: var(--muted);
-  font-size: 9px;
-  font-style: normal;
-  margin-top: 4px;
-}
-
 .lemon-slot-active {
   border-color: var(--lemon);
   background: rgba(230, 245, 130, 0.045);
@@ -232,13 +224,6 @@
 .lemon-fruit-option small {
   font-size: 9px;
   margin-top: 4px;
-}
-
-.lemon-fruit-option em {
-  font-size: 9px;
-  color: var(--muted);
-  font-style: normal;
-  margin-top: 3px;
 }
 
 .lemon-fruit-option:hover,
@@ -562,11 +547,6 @@
   line-height: 1;
 }
 
-.lemon-fruit small {
-  font-size: 9px;
-  color: var(--muted);
-}
-
 .lemon-triple-small .lemon-fruit {
   font-size: 22px;
   padding: 5px;
@@ -639,37 +619,6 @@
 .lemon-dashboard :is(a, button, select, input, summary):focus-visible {
   outline: 2px solid var(--mint);
   outline-offset: 4px;
-}
-
-.lemon-how ol {
-  margin: 24px 0 12px;
-  padding: 0;
-  list-style: none;
-}
-
-.lemon-how li {
-  display: flex;
-  gap: 14px;
-  margin-top: 22px;
-}
-
-.lemon-how li > span {
-  color: var(--lemon);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.9;
-}
-
-.lemon-how li strong {
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.lemon-how li p {
-  margin-top: 7px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.9;
 }
 
 .lemon-message {
@@ -771,16 +720,38 @@
   padding: 8px 11px;
 }
 
-.lemon-reveal-review > p {
-  margin-top: 14px;
-  color: var(--muted);
+.lemon-reveal-review {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(230, 245, 130, 0.2);
+  border-radius: 8px;
+  background: rgba(230, 245, 130, 0.035);
+}
+
+.lemon-reveal-review h3 {
+  margin: 0;
   font-size: 12px;
+  font-weight: 500;
+}
+
+.lemon-reveal-review > p {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 10px;
   line-height: 1.8;
+}
+
+.lemon-reveal-review .lemon-checkout {
+  margin-top: 12px;
+}
+
+.lemon-reveal-review .lemon-ticket-actions .button {
+  flex: 1 1 auto;
 }
 
 .lemon-guide-content {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 28px;
 }
 
@@ -795,6 +766,44 @@
   color: var(--muted);
   font-size: 11px;
   line-height: 1.9;
+}
+
+.lemon-guide-content .lemon-mapping-title {
+  margin-top: 22px;
+  font-size: 11px;
+}
+
+.lemon-fruit-map {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 20px;
+  margin: 14px 0 0;
+}
+
+.lemon-fruit-map > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.lemon-fruit-map dt {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.lemon-fruit-map dt > span {
+  font-size: 16px;
+}
+
+.lemon-fruit-map dd {
+  margin: 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 1100px) {

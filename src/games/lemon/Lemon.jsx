@@ -61,14 +61,12 @@ function FruitTriple({ numbers, small = false }) {
   return (
     <span
       className={`lemon-triple${small ? " lemon-triple-small" : ""}`}
-      aria-label={numbers
-        .map((number) => `${FRUITS[number].name}, digit ${number}`)
-        .join("; ")}
+      role="img"
+      aria-label={numbers.map((number) => FRUITS[number].name).join("; ")}
     >
       {numbers.map((number, index) => (
         <span className="lemon-fruit" key={index} aria-hidden="true">
           {FRUITS[number].symbol}
-          <small>{number}</small>
         </span>
       ))}
     </span>
@@ -106,19 +104,13 @@ function ticketState(ticket, now) {
   };
 }
 
-function drawKind(record, config) {
+function drawKind(record) {
+  const type =
+    record.drawType ?? record.draw?.drawType ?? record.result?.drawType;
+  if (type === "daily") return "Daily draw";
+  if (type === "quick") return "Quick draw";
   if (typeof record.quickDraw === "boolean")
     return record.quickDraw ? "Quick draw" : "Daily draw";
-  if (
-    Array.isArray(config?.dailyHours) &&
-    Number.isSafeInteger(record.drawTime)
-  ) {
-    const localSeconds =
-      (((record.drawTime + 28_800) % 86_400) + 86_400) % 86_400;
-    return config.dailyHours.some((hour) => hour * 3_600 === localSeconds)
-      ? "Daily draw"
-      : "Quick draw";
-  }
   return "Recorded draw";
 }
 
@@ -130,6 +122,66 @@ function dateLabel(timestamp) {
 
 function displayMessage(value) {
   return typeof value === "string" ? value : (value?.message ?? "");
+}
+
+function drawKey(ticket) {
+  return `${ticket.sourceProgram ?? ""}:${ticket.drawTime}`;
+}
+
+function RevealCostReview({ quote, ready, canTransact, busy, game }) {
+  return (
+    <section className="lemon-reveal-review" aria-label="Review reveal costs">
+      <h3>Review reveal costs</h3>
+      <p>
+        One oracle request covers this draw. Your wallet pays these costs
+        separately from the prize pool.
+      </p>
+      <dl className="lemon-checkout">
+        <div>
+          <dt>Oracle fee</dt>
+          <dd>{sol(quote.feeLamports)}</dd>
+        </div>
+        <div>
+          <dt>Oracle and request account rents</dt>
+          <dd>{sol(quote.rentLamports)}</dd>
+        </div>
+        <div className="lemon-checkout-total">
+          <dt>Total before network fee</dt>
+          <dd>{sol(quote.totalLamports)}</dd>
+        </div>
+      </dl>
+      <p>
+        Completion may need another wallet approval after the oracle responds.
+        No replacement request is sent automatically.
+      </p>
+      {!ready && (
+        <p role="status">
+          This quote is no longer current. Cancel and review fresh reveal costs
+          before approving.
+        </p>
+      )}
+      <div className="lemon-ticket-actions">
+        <button
+          type="button"
+          className="button button-primary"
+          disabled={
+            !canTransact || !ready || typeof game.confirmReveal !== "function"
+          }
+          onClick={() => game.confirmReveal?.()}
+        >
+          Approve reveal costs
+        </button>
+        <button
+          type="button"
+          className="button button-secondary"
+          disabled={busy}
+          onClick={() => game.cancelReveal?.()}
+        >
+          Cancel
+        </button>
+      </div>
+    </section>
+  );
 }
 
 export default function Lemon() {
@@ -182,6 +234,16 @@ export default function Lemon() {
     (ticketPage - 1) * 6,
     ticketPage * 6,
   );
+  const drawActionTickets = new Map();
+  for (const ticket of visibleTickets) {
+    const state = ticketState(ticket, now);
+    if (
+      state.group === "ongoing" &&
+      state.due &&
+      !drawActionTickets.has(drawKey(ticket))
+    )
+      drawActionTickets.set(drawKey(ticket), ticket.id ?? ticket.address);
+  }
   const results = (
     Array.isArray(game.drawResults) ? game.drawResults : []
   ).filter(
@@ -190,7 +252,7 @@ export default function Lemon() {
       (result.isPublished === true || result.status === "final"),
   );
   const filteredResults = results.filter((result) => {
-    if (resultFilter !== "all" && drawKind(result, config) !== resultFilter)
+    if (resultFilter !== "all" && drawKind(result) !== resultFilter)
       return false;
     if (!resultDate) return true;
     if (!Number.isSafeInteger(result.drawTime)) return false;
@@ -245,8 +307,7 @@ export default function Lemon() {
             Lemon<span>.</span>
           </h1>
           <p className="page-description">
-            A three-digit fruit lotto. Pick your trio and match all three in
-            order.
+            Pick your fruit and match all three in order.
           </p>
         </div>
         <span className="test-build-label">Test SOL only</span>
@@ -264,7 +325,6 @@ export default function Lemon() {
           🍋
         </span>
         <div className="lemon-banner-title">
-          <span>A fresh kind of lotto</span>
           <strong>Pick it. Match it. Lemon.</strong>
         </div>
         <div className="lemon-banner-prize">
@@ -313,8 +373,8 @@ export default function Lemon() {
               <p className="eyebrow">YOUR NEXT TRIO</p>
               <h2 id="lemon-buy-title">Buy a ticket</h2>
             </div>
-            <span className="lemon-odds">
-              {verified ? "1 in 1,000" : "Rules pending"}
+            <span className="lemon-chain-badge">
+              {verified ? "On-chain" : "Rules pending"}
             </span>
           </div>
           <p className="lemon-subtitle">
@@ -333,13 +393,12 @@ export default function Lemon() {
                   type="button"
                   className={`lemon-slot${selectedSlot === index ? " lemon-slot-active" : ""}`}
                   aria-pressed={selectedSlot === index}
-                  aria-label={`Position ${index + 1}: ${fruit ? `${fruit.name}, digit ${numbers[index]}` : "not selected"}. Choose this position.`}
+                  aria-label={`Position ${index + 1}: ${fruit?.name ?? "not selected"}. Choose this position.`}
                   onClick={() => setSelectedSlot(index)}
                 >
                   <small>POSITION {index + 1}</small>
                   <span aria-hidden="true">{fruit?.symbol ?? "+"}</span>
                   <strong>{fruit?.name ?? "Pick a fruit"}</strong>
-                  <em>{fruit ? `Digit ${numbers[index]}` : "0–9"}</em>
                 </button>
               );
             })}
@@ -352,13 +411,12 @@ export default function Lemon() {
                   key={fruit.name}
                   type="button"
                   className={`lemon-fruit-option${numbers[selectedSlot] === digit ? " lemon-fruit-option-selected" : ""}`}
-                  aria-label={`${fruit.name}, digit ${digit}, for position ${selectedSlot + 1}`}
+                  aria-label={`${fruit.name}, for position ${selectedSlot + 1}`}
                   aria-pressed={numbers[selectedSlot] === digit}
                   onClick={() => chooseFruit(digit)}
                 >
                   <span aria-hidden="true">{fruit.symbol}</span>
                   <small>{fruit.name}</small>
-                  <em>{digit}</em>
                 </button>
               ))}
             </div>
@@ -591,6 +649,19 @@ export default function Lemon() {
                       ticket.claimFundingVerified === true &&
                       ticket.claimFunded === false;
                     const drawStatus = ticket.draw?.status;
+                    const ticketId = ticket.id ?? ticket.address;
+                    const ownsDrawAction =
+                      drawActionTickets.get(drawKey(ticket)) === ticketId;
+                    const reviewingDraw = Boolean(
+                      state.group === "ongoing" &&
+                        state.due &&
+                        !state.published &&
+                        drawStatus === "open" &&
+                        ownsDrawAction &&
+                        revealQuote?.requiresPayment === true &&
+                        revealQuote?.drawTime === ticket.drawTime &&
+                        revealQuote?.sourceProgram === ticket.sourceProgram,
+                    );
                     return (
                       <li
                         className="lemon-ticket"
@@ -598,7 +669,7 @@ export default function Lemon() {
                       >
                         <div className="lemon-ticket-heading">
                           <div>
-                            <strong>{drawKind(ticket, config)}</strong>
+                            <strong>{drawKind(ticket)}</strong>
                             <span>{dateLabel(ticket.drawTime)}</span>
                           </div>
                           <span
@@ -647,7 +718,10 @@ export default function Lemon() {
                           {state.group === "ongoing" &&
                             state.due &&
                             !state.published &&
-                            drawStatus !== "pending" && (
+                            ownsDrawAction &&
+                            !reviewingDraw &&
+                            drawStatus !== "pending" &&
+                            drawStatus !== "final" && (
                               <button
                                 type="button"
                                 className="button button-secondary"
@@ -675,6 +749,14 @@ export default function Lemon() {
                                 Waiting for oracle · Refresh to check
                               </span>
                             )}
+                          {state.group === "ongoing" &&
+                            state.due &&
+                            !ownsDrawAction &&
+                            drawStatus !== "pending" && (
+                              <span className="lemon-pending-oracle">
+                                Shared draw · One reveal covers these tickets
+                              </span>
+                            )}
                           {ticket.refundEligible === true &&
                             !ticket.settled &&
                             !ticket.refunded && (
@@ -691,6 +773,15 @@ export default function Lemon() {
                               </button>
                             )}
                         </div>
+                        {reviewingDraw && (
+                          <RevealCostReview
+                            quote={revealQuote}
+                            ready={revealQuoteReady}
+                            canTransact={canTransact}
+                            busy={busy}
+                            game={game}
+                          />
+                        )}
                         <div className="lemon-ticket-history">
                           <ExternalLink
                             address={ticket.address ?? ticket.id}
@@ -746,108 +837,113 @@ export default function Lemon() {
             </div>
           </details>
 
-          <section className="lemon-panel lemon-how">
-            <p className="eyebrow">FRUITS, WITH RECEIPTS</p>
-            <h2>Simple picks. Public results.</h2>
-            <ol>
-              <li>
-                <span>01</span>
-                <div>
-                  <strong>Choose your three fruits</strong>
-                  <p>
-                    Each fruit represents one digit from 0–9. Order matters;
-                    repeats are allowed.
-                  </p>
-                </div>
-              </li>
-              <li>
-                <span>02</span>
-                <div>
-                  <strong>Fresh randomness after sales close</strong>
-                  <p>
-                    Reveal with reviewed oracle funding. Every ticket in a
-                    shared daily draw uses the same recorded result.
-                  </p>
-                </div>
-              </li>
-              <li>
-                <span>03</span>
-                <div>
-                  <strong>Match all three, then claim</strong>
-                  <p>
-                    The exact ordered trio wins the ticket’s recorded fixed
-                    prize. Verify the entry and result on Solana.
-                  </p>
-                </div>
-              </li>
-            </ol>
-            <ExternalLink address={config?.programId} network={game.network}>
-              Lemon program
-            </ExternalLink>
-          </section>
+          <details
+            ref={guideDisclosure}
+            className="lemon-panel lemon-disclosure"
+            id="lemon-guide"
+          >
+            <summary>
+              <span>
+                <span className="eyebrow">A QUICK READ BEFORE YOU PLAY</span>
+                <strong>Game guide</strong>
+              </span>
+              <span className="lemon-disclosure-end">
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path
+                    d="m6 8 4 4 4-4"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+            </summary>
+            <div className="lemon-disclosure-content lemon-guide-content">
+              <div>
+                <h3>Choose your three fruits</h3>
+                <p>
+                  Choose one fruit for each position. The same fruit can appear
+                  more than once. All three positions must match the verified
+                  result in the exact order. There are{" "}
+                  {verified
+                    ? "1,000 equally likely ordered outcomes, so the chance of an exact match is 1 in 1,000"
+                    : "no verified odds available until the on-chain rules load"}
+                  .
+                </p>
+                <p>
+                  Lemon is the signature fruit. Three lemons use the same
+                  exact-match rule and prize as any other trio.
+                </p>
+                <h3 className="lemon-mapping-title">
+                  Fruit values on the blockchain
+                </h3>
+                <p>
+                  The program records each fruit as a digit. This mapping stays
+                  the same for every ticket and result.
+                </p>
+                <dl className="lemon-fruit-map">
+                  {FRUITS.map((fruit, digit) => (
+                    <div key={fruit.name}>
+                      <dt>
+                        <span aria-hidden="true">{fruit.symbol}</span>
+                        {fruit.name}
+                      </dt>
+                      <dd>{digit}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+              <div>
+                <h3>Pick one draw per ticket</h3>
+                <p>
+                  Daily draw times:{" "}
+                  {schedule
+                    ? `${schedule} UTC+8`
+                    : "awaiting the verified on-chain schedule"}
+                  . Each ticket belongs to the selected draw only. You can enter
+                  multiple tickets. Quick entries with the same upcoming draw
+                  time share one recorded result.
+                </p>
+              </div>
+              <div>
+                <h3>Reveal, verify, claim</h3>
+                <p>
+                  After sales close, a player reviews and funds one fresh ORAO
+                  request for the draw. Pending requests are checked, never
+                  rerolled. After fulfillment, complete the draw and view its
+                  immutable result and proof through blockchain history. A
+                  winning claim transfers only to the ticket’s recorded owner
+                  and can be paid once.
+                </p>
+                <ExternalLink
+                  address={config?.programId}
+                  network={game.network}
+                >
+                  Lemon program
+                </ExternalLink>
+              </div>
+              <div>
+                <h3>Costs and funding</h3>
+                <p>
+                  Entry prices, fixed prizes and account rents come from
+                  verified chain data. Buying pays entry and account rent plus
+                  network fees; revealing pays the reviewed oracle costs
+                  separately. A prize may wait for a treasury refill and does
+                  not expire while unpaid. A verified timeout refund returns the
+                  paid entry only; network and account costs are separate.
+                </p>
+                <ExternalLink
+                  address={config?.vaultAddress}
+                  network={game.network}
+                >
+                  Actual Lemon prize vault
+                </ExternalLink>
+              </div>
+            </div>
+          </details>
         </div>
       </div>
-
-      {revealQuote && (
-        <section
-          className="lemon-panel lemon-reveal-review"
-          aria-labelledby="lemon-reveal-title"
-        >
-          <h2 id="lemon-reveal-title">Review reveal costs</h2>
-          <p>
-            One oracle request covers this draw. Your wallet pays these costs
-            separately from the prize pool.
-          </p>
-          <p>{dateLabel(revealQuote.drawTime)}</p>
-          <dl className="lemon-checkout">
-            <div>
-              <dt>Oracle fee</dt>
-              <dd>{sol(revealQuote.feeLamports)}</dd>
-            </div>
-            <div>
-              <dt>Oracle and request account rents</dt>
-              <dd>{sol(revealQuote.rentLamports)}</dd>
-            </div>
-            <div className="lemon-checkout-total">
-              <dt>Total before network fee</dt>
-              <dd>{sol(revealQuote.totalLamports)}</dd>
-            </div>
-          </dl>
-          <p className="lemon-subtitle">
-            Oracle fulfillment is asynchronous. Completing the recorded result
-            can require a second wallet approval. No replacement request is sent
-            automatically.
-          </p>
-          {!revealQuoteReady && (
-            <p role="status">
-              This quote is no longer current. Cancel and review fresh reveal
-              costs before approving.
-            </p>
-          )}
-          <div className="lemon-ticket-actions">
-            <button
-              type="button"
-              className="button button-primary"
-              disabled={
-                !canTransact ||
-                !revealQuoteReady ||
-                typeof game.confirmReveal !== "function"
-              }
-              onClick={() => game.confirmReveal?.()}
-            >
-              Approve reveal costs
-            </button>
-            <button
-              type="button"
-              className="button button-secondary"
-              disabled={busy}
-              onClick={() => game.cancelReveal?.()}
-            >
-              Cancel
-            </button>
-          </div>
-        </section>
-      )}
 
       <details
         ref={resultDisclosure}
@@ -943,7 +1039,7 @@ export default function Lemon() {
                 <tbody>
                   {visibleResults.map((result) => (
                     <tr key={result.id ?? result.address}>
-                      <td>{drawKind(result, config)}</td>
+                      <td>{drawKind(result)}</td>
                       <td>
                         <FruitTriple numbers={result.numbers} small />
                       </td>
@@ -993,86 +1089,6 @@ export default function Lemon() {
               </button>
             </div>
           )}
-        </div>
-      </details>
-
-      <details
-        ref={guideDisclosure}
-        className="lemon-panel lemon-disclosure"
-        id="lemon-guide"
-      >
-        <summary>
-          <span>
-            <span className="eyebrow">A QUICK READ BEFORE YOU PLAY</span>
-            <strong>Game guide</strong>
-          </span>
-          <span className="lemon-disclosure-end">
-            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path
-                d="m6 8 4 4 4-4"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </span>
-        </summary>
-        <div className="lemon-disclosure-content lemon-guide-content">
-          <div>
-            <h3>Three digits, dressed as fruit</h3>
-            <p>
-              Choose one fruit for each position. The ten fruits map to digits
-              0–9, and the same fruit can appear more than once. All three
-              positions must match the verified result in the exact order. There
-              are{" "}
-              {verified
-                ? "1,000 equally likely ordered outcomes, so the chance of an exact match is 1 in 1,000"
-                : "no verified odds available until the on-chain rules load"}
-              .
-            </p>
-            <p>
-              Lemon is the signature fruit. Three lemons use the same
-              exact-match rule and prize as any other trio.
-            </p>
-          </div>
-          <div>
-            <h3>Pick one draw per ticket</h3>
-            <p>
-              Daily draw times:{" "}
-              {schedule
-                ? `${schedule} UTC+8`
-                : "awaiting the verified on-chain schedule"}
-              . Each ticket belongs to the selected draw only. You can enter
-              multiple tickets. Quick entries with the same upcoming draw time
-              share one recorded result.
-            </p>
-          </div>
-          <div>
-            <h3>Reveal, verify, claim</h3>
-            <p>
-              After sales close, a player reviews and funds one fresh ORAO
-              request for the draw. Pending requests are checked, never
-              rerolled. After fulfillment, complete the draw and view its
-              immutable result and proof through blockchain history. A winning
-              claim transfers only to the ticket’s recorded owner and can be
-              paid once.
-            </p>
-          </div>
-          <div>
-            <h3>Costs and funding</h3>
-            <p>
-              Entry prices, fixed prizes and account rents come from verified
-              chain data. Buying pays entry and account rent plus network fees;
-              revealing pays the reviewed oracle costs separately. A prize may
-              wait for a treasury refill and does not expire while unpaid. A
-              verified timeout refund returns the paid entry only; network and
-              account costs are separate.
-            </p>
-            <ExternalLink address={config?.vaultAddress} network={game.network}>
-              Actual Lemon prize vault
-            </ExternalLink>
-          </div>
         </div>
       </details>
     </div>

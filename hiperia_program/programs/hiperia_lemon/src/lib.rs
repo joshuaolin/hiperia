@@ -19,8 +19,8 @@ const OUTCOME_COUNT: u16 = 1_000;
 const BUY_AHEAD_SECONDS: i64 = 86_400;
 const REFUND_AFTER_SECONDS: i64 = 86_400;
 const DAILY_INTERVAL: i64 = 14_400;
-const DAILY_OFFSET: i64 = 7_200;
-const DAILY_HOURS: [u8; 6] = [2, 6, 10, 14, 18, 22];
+const DAILY_OFFSET: i64 = 10_800;
+const DAILY_HOURS: [u8; 6] = [3, 7, 11, 15, 19, 23];
 const CONFIG_SEED: &[u8] = b"config";
 const VAULT_SEED: &[u8] = b"vault";
 const TICKET_SEED: &[u8] = b"ticket";
@@ -103,6 +103,7 @@ pub mod hiperia_lemon {
         let now = Clock::get()?.unix_timestamp;
         require!(valid_numbers(&numbers), ErrorCode::InvalidNumbers);
         require!(draw_time > now && draw_time <= now.saturating_add(BUY_AHEAD_SECONDS), ErrorCode::BadDrawTime);
+        require!(draw_time.rem_euclid(DAILY_INTERVAL) != 7_200, ErrorCode::BadDrawTime);
         let cost = draw_cost(draw_time, ctx.accounts.config.ticket_cost_lamports);
         let prize = draw_prize(draw_time, ctx.accounts.config.payout_lamports)?;
         let draw_info = ctx.accounts.draw.to_account_info();
@@ -1011,7 +1012,8 @@ mod tests {
         assert!(rules.repeats_allowed && rules.ordered);
         assert_eq!(rules.outcome_count, 1000);
         assert_eq!(rules.try_to_vec().unwrap().len(), 58);
-        assert_eq!(rules.daily_hours, [2, 6, 10, 14, 18, 22]);
+        assert_eq!(rules.daily_hours, [3, 7, 11, 15, 19, 23]);
+        assert_eq!(rules.schedule_offset_seconds, 10_800);
         assert_eq!((rules.quick_ticket_cost_lamports, rules.daily_ticket_cost_lamports), (7_200_000, 6_250_000));
         assert_eq!((rules.quick_payout_lamports, rules.daily_payout_lamports), (2_500_000_000, 4_750_000_000));
         assert_eq!(AccessRules { revision: 1, public_play: true, public_results: true }.try_to_vec().unwrap(), vec![1, 1, 1]);

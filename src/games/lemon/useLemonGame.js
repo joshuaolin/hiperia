@@ -14,10 +14,11 @@ import {
 } from "../../lib/refreshGate.js";
 import {
   formatDrawTime,
-  getNextDrawTime,
-  getSelectedDrawTime,
-  getUpcomingDrawTimes,
-} from "../../lib/onchain/time.js";
+  nextLemonDrawTime as getNextDrawTime,
+  selectedLemonDrawTime as getSelectedDrawTime,
+  upcomingLemonDrawTimes as getUpcomingDrawTimes,
+} from "./lemonSchedule.js";
+import { LemonDrawProgress } from "./revealState.js";
 
 const emptyData = (key = null) => ({
   key,
@@ -89,6 +90,8 @@ export function useLemonGame() {
     [connection, publicKey, signTransaction, signAllTransactions],
   );
   const dataKey = `${LEMON_PROGRAM_ID}:${connection.rpcEndpoint}:${walletAddress ?? "readonly"}`;
+  const drawProgress = useMemo(() => new LemonDrawProgress(dataKey), [dataKey]);
+  const drawActions = useRef(new Set());
   const [data, setData] = useState(emptyData);
   const [selectedNumbers, setSelectedNumbers] = useState([null, null, null]);
   const [quickDraw, setQuickDrawState] = useState(false);
@@ -157,7 +160,11 @@ export function useLemonGame() {
       if (mounted.current && activeClient.current === client)
         setIsLoading(true);
       const apply = (snapshot) => {
-        const next = { ...snapshot, key: dataKey, source: client };
+        const next = {
+          ...drawProgress.merge(snapshot),
+          key: dataKey,
+          source: client,
+        };
         loadedData.current = next;
         setData(next);
       };
@@ -252,7 +259,7 @@ export function useLemonGame() {
         }
       }
     },
-    [client, dataKey, refreshGate, walletAddress],
+    [client, dataKey, drawProgress, refreshGate, walletAddress],
   );
 
   useEffect(() => {
@@ -264,6 +271,7 @@ export function useLemonGame() {
     setRefreshError("");
     setPurchaseQuoteState(null);
     setRevealQuoteState(null);
+    drawProgress.approval = null;
     if (loadedData.current?.key === dataKey)
       setData({ ...loadedData.current, source: client, configVerified: false });
     refresh();
@@ -271,7 +279,7 @@ export function useLemonGame() {
       mounted.current = false;
       if (activeClient.current === client) activeClient.current = null;
     };
-  }, [client, dataKey, refresh]);
+  }, [client, dataKey, drawProgress, refresh]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -366,6 +374,60 @@ export function useLemonGame() {
       );
   }
 
+  function rememberDraw(draw) {
+    if (!draw) return;
+    assertActive();
+    drawProgress.remember(draw);
+    const previous =
+      loadedData.current?.key === dataKey ? loadedData.current : visibleData;
+    const next = {
+      ...drawProgress.merge(previous),
+      key: dataKey,
+      source: client,
+    };
+    loadedData.current = next;
+    setData(next);
+  }
+
+  async function completeReviewedDraw(drawTime, quote) {
+    const actionKey = `${LEMON_PROGRAM_ID}:${drawTime}`;
+    if (drawActions.current.has(actionKey))
+      throw new Error(
+        "This draw is already being processed. Refresh to check its recorded status.",
+      );
+    const known = drawProgress.draws.get(drawTime);
+    if (known?.status === "final")
+      return { draw: known, phase: "final", pending: false, recovered: true };
+    drawActions.current.add(actionKey);
+    try {
+      const result = await client.recordDraw(drawTime, {
+        quote,
+        assertActive,
+        onProgress: (progress) => {
+          assertActive();
+          if (progress.phase === "pending" && quote.draw)
+            rememberDraw({
+              ...quote.draw,
+              status: "pending",
+              numbers: null,
+              oracleRequest: progress.oracleRequest ?? quote.draw.oracleRequest,
+            });
+          setStatus(
+            progress.phase === "request"
+              ? "Approve the reviewed oracle request in your wallet."
+              : progress.phase === "pending"
+                ? "The oracle request is recorded. Waiting for fulfillment; no replacement request is sent."
+                : "The oracle proof is ready. Approve draw completion to record the verified result.",
+          );
+        },
+      });
+      rememberDraw(result.draw);
+      return result;
+    } finally {
+      drawActions.current.delete(actionKey);
+    }
+  }
+
   async function requireWallet() {
     assertActive();
     if (!canSign) throw new Error("Connect a wallet before continuing.");
@@ -447,8 +509,12 @@ export function useLemonGame() {
     }
   }
 
-  const dailyDraws = getUpcomingDrawTimes(now);
-  if (!dailyDraws.includes(dailyDrawTime)) dailyDraws.unshift(dailyDrawTime);
+  const dailyDraws = getUpcomingDrawTimes(
+    now,
+    configVerified ? (config?.dailyHours ?? []) : [],
+  );
+  if (configVerified && !dailyDraws.includes(dailyDrawTime))
+    dailyDraws.unshift(dailyDrawTime);
 
   return {
     walletAddress,
@@ -545,8 +611,36 @@ export function useLemonGame() {
           throw new Error(
             "Wait until this draw's sales have closed before revealing its result.",
           );
+        const known = drawProgress.draws.get(Number(ticket.drawTime));
+        const current = loadedData.current?.tickets?.find(
+          (entry) =>
+            entry.sourceProgram === LEMON_PROGRAM_ID &&
+            entry.drawTime === Number(ticket.drawTime) &&
+            entry.result?.isPublished,
+        );
+        if (known?.status === "final" || current) {
+          drawProgress.approval = null;
+          setRevealQuoteState(null);
+          setStatus(
+            "This draw is already complete. Its recorded result is shown in your tickets and draw history.",
+          );
+          return null;
+        }
         const quote = await client.quoteOracleRequest(Number(ticket.drawTime));
         assertActive();
+        if (quote.draw) rememberDraw(quote.draw);
+        if (quote.requiresPayment === false) {
+          drawProgress.approval = null;
+          setRevealQuoteState(null);
+          setStatus(
+            quote.drawStatus === "final"
+              ? "This draw is already complete. No new oracle request or fee is needed."
+              : quote.drawStatus === "fulfilled"
+                ? "The existing oracle proof is ready. Complete this draw from its ticket; no new oracle fee is needed."
+                : "This draw already has an oracle request. Refresh to check fulfillment; no new oracle fee is needed.",
+          );
+          return null;
+        }
         const feeLamports = amount(quote.feeLamports);
         const pendingRent = amount(quote.pendingRentLamports ?? 0);
         const clientRent = amount(quote.clientRentLamports ?? 0);
@@ -586,6 +680,7 @@ export function useLemonGame() {
           throw new Error(
             "The reveal quote expired. Review its current costs again.",
           );
+        drawProgress.approval = reviewed;
         setRevealQuoteState(reviewed);
         setStatus(
           quote.requiresPayment === false
@@ -594,28 +689,29 @@ export function useLemonGame() {
         );
         return reviewed;
       }),
-    confirmReveal: () =>
-      runAction(
+    confirmReveal: () => {
+      if (
+        busy.current ||
+        !mounted.current ||
+        activeClient.current !== client ||
+        !revealQuote ||
+        drawProgress.approval !== revealQuote
+      )
+        return null;
+      const approved = drawProgress.approval;
+      drawProgress.approval = null;
+      setRevealQuoteState(null);
+      return runAction(
         "revealing",
         async () => {
-          if (!revealQuote || revealQuote.validUntil <= Date.now())
+          if (approved.validUntil <= Date.now())
             throw new Error(
               "Review fresh reveal costs for this ticket before continuing.",
             );
-          const result = await client.recordDraw(revealQuote.drawTime, {
-            quote: revealQuote.quote,
-            assertActive,
-            onProgress: (progress) => {
-              assertActive();
-              setStatus(
-                progress.phase === "request"
-                  ? "Approve the reviewed oracle request in your wallet."
-                  : progress.phase === "pending"
-                    ? "The oracle request is recorded. Waiting for fulfillment; no replacement request is sent."
-                    : "The oracle proof is ready. Approve draw completion to record the verified result.",
-              );
-            },
-          });
+          const result = await completeReviewedDraw(
+            approved.drawTime,
+            approved.quote,
+          );
           assertActive();
           setRevealQuoteState(null);
           setStatus(
@@ -626,9 +722,13 @@ export function useLemonGame() {
           return result;
         },
         { signature: true, refreshAfter: true },
-      ),
+      );
+    },
     cancelReveal: () => {
-      if (!busy.current) setRevealQuoteState(null);
+      if (!busy.current) {
+        drawProgress.approval = null;
+        setRevealQuoteState(null);
+      }
     },
     revealDraw: (ticket) =>
       runAction(
@@ -643,14 +743,15 @@ export function useLemonGame() {
             Number(ticket.drawTime),
           );
           assertActive();
+          if (quote.draw) rememberDraw(quote.draw);
           if (quote.requiresPayment !== false)
             throw new Error(
               "Review this draw's oracle fee and account rent before requesting fresh randomness.",
             );
-          const result = await client.recordDraw(Number(ticket.drawTime), {
+          const result = await completeReviewedDraw(
+            Number(ticket.drawTime),
             quote,
-            assertActive,
-          });
+          );
           assertActive();
           setStatus(
             result?.pending || result?.phase === "pending"

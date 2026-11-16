@@ -8,7 +8,7 @@ const origin = process.env.UI_TEST_ORIGIN || "http://127.0.0.1:5173";
 const address = (byte) =>
   new PublicKey(new Uint8Array(32).fill(byte)).toBase58();
 const now = Date.parse("2026-11-15T00:00:00Z");
-const future = now / 1000 + 7200;
+const future = now / 1000 + 10800;
 const program = address(37);
 const wallet = address(1);
 const network = {
@@ -54,11 +54,22 @@ const tickets = Array.from({ length: 7 }, (_, index) => ({
       : null,
 }));
 tickets[3].numbers = [0, 0, 0];
+tickets[3].drawTime = Date.parse("2026-11-14T18:00:00Z") / 1000;
+tickets[3].draw.drawType = "daily";
+tickets[3].result.drawType = "daily";
+tickets[3].result.drawTime = tickets[3].drawTime;
+tickets[3].payoutLamports = 4_750_000_037;
 tickets[3].claimFunded = false;
 tickets[3].claimFundingVerified = true;
 tickets[4].settled = true;
 tickets[6].refundEligible = true;
 tickets[6].drawTime = now / 1000 - 86_401;
+tickets[0].quickDraw = false;
+tickets.push({
+  ...tickets[0],
+  id: address(57),
+  address: address(57),
+});
 const fixture = {
   now,
   network,
@@ -78,7 +89,7 @@ const fixture = {
     prizeLamports: 4_750_000_037,
     quickEntryLamports: 7_200_019,
     quickPrizeLamports: 2_500_000_037,
-    dailyHours: [2, 6, 10, 14, 18, 22],
+    dailyHours: [3, 7, 11, 15, 19, 23],
     programId: program,
     vaultAddress: address(40),
   },
@@ -150,11 +161,11 @@ export function useLemonGame(){
  const action=(name,ticket)=>window.__lemonActions.push(name+(ticket?':'+ticket.id:''));
  window.__setLemonQuote=setQuote;window.__setLemonClock=setClock;window.__setLemonRules=setRules;window.__setLemonResults=setResults;
  window.__setLemonFunding=(funded,verified=true)=>setTickets(values=>values.map(ticket=>ticket.id===initial.tickets[3].id?{...ticket,claimFunded:funded,claimFundingVerified:verified}:ticket));
- return {...initial,now:clock,config:rules?initial.config:null,tickets,drawResults:results,canSign:true,networkAllowed:true,isLoading:false,pending:false,actionStatus:'idle',selectedNumbers:numbers,quickDraw:quick,selectedDrawTime:drawTime,drawOptions:[{timestamp:${future},label:'Nov 15, 10 AM UTC+8'},{timestamp:${future + 14400},label:'Nov 15, 2 PM UTC+8'}],purchaseQuote:quote,revealQuote,
+ return {...initial,now:clock,config:rules?initial.config:null,tickets,drawResults:results,canSign:true,networkAllowed:true,isLoading:false,pending:false,actionStatus:'idle',selectedNumbers:numbers,quickDraw:quick,selectedDrawTime:drawTime,drawOptions:[{timestamp:${future},label:'Nov 15, 11 AM UTC+8'},{timestamp:${future + 14400},label:'Nov 15, 3 PM UTC+8'}],purchaseQuote:quote,revealQuote,
   setNumber(index,digit){setNumbers(values=>{const next=[...values];next[index]=digit;return next;});},setQuickDraw(value){setQuick(value);setDraw(value?initial.now/1000+60:${future});},setSelectedDrawTime:setDraw,
   buyTicket(){action('buy');},refreshPurchaseQuote(){action('quote');},refresh(){action('refresh');},
-  reviewReveal(ticket){action('review',ticket);setRevealQuote({...costs,ticketId:ticket.id,drawTime:ticket.drawTime,walletAddress:initial.walletAddress,sourceProgram:initial.config.programId,validUntil:clock+30000});},
-  confirmReveal(){action('reveal');setRevealQuote(null);},cancelReveal(){setRevealQuote(null);},
+  reviewReveal(ticket){action('review',ticket);setRevealQuote({...costs,requiresPayment:true,ticketId:ticket.id,drawTime:ticket.drawTime,walletAddress:initial.walletAddress,sourceProgram:initial.config.programId,validUntil:clock+30000});},
+  confirmReveal(){if(!revealQuote)return;action('reveal');setTickets(values=>values.map(ticket=>ticket.sourceProgram===revealQuote.sourceProgram&&ticket.drawTime===revealQuote.drawTime?{...ticket,draw:{...ticket.draw,status:'pending'}}:ticket));setRevealQuote(null);},cancelReveal(){setRevealQuote(null);},
   revealDraw(ticket){action('complete',ticket);setTickets(values=>values.map(entry=>entry.id===ticket.id?{...entry,draw:{...entry.draw,status:'final'},result:{numbers:[1,2,3],isPublished:true}}:entry));},
   claimTicket(ticket){action('claim',ticket);if(window.__lemonConfirmClaim)setTickets(values=>values.map(entry=>entry.id===ticket.id?{...entry,settled:true}:entry));},
   refundTicket(ticket){action('refund',ticket);setTickets(values=>values.map(entry=>entry.id===ticket.id?{...entry,refunded:true,settled:true}:entry));}
@@ -178,21 +189,36 @@ export function useLemonGame(){
   assert.deepEqual(await page.evaluate(() => window.__lemonActions), []);
   await expect(page.locator("#lemon-tickets")).not.toHaveAttribute("open");
   await expect(page.locator("#lemon-results")).not.toHaveAttribute("open");
+  await expect(page.locator("#lemon-guide")).not.toHaveAttribute("open");
+  await expect(page.locator(".lemon-dashboard .page-description")).toHaveText(
+    "Pick your fruit and match all three in order.",
+  );
+  await expect(page.locator(".lemon-chain-badge")).toHaveText("On-chain");
+  await expect(
+    page.getByText("A fresh kind of lotto", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Simple picks. Public results." }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(".lemon-slot em, .lemon-fruit-option em, .lemon-fruit small"),
+  ).toHaveCount(0);
+  await expect(page.locator(".lemon-buy [aria-label*='digit']")).toHaveCount(0);
   await page
     .getByRole("button", {
-      name: "Lemon, digit 0, for position 1",
+      name: "Lemon, for position 1",
       exact: true,
     })
     .click();
   await page
     .getByRole("button", {
-      name: "Cherry, digit 1, for position 2",
+      name: "Cherry, for position 2",
       exact: true,
     })
     .click();
   await page
     .getByRole("button", {
-      name: "Lemon, digit 0, for position 3",
+      name: "Lemon, for position 3",
       exact: true,
     })
     .click();
@@ -251,6 +277,12 @@ export function useLemonGame(){
   const ticketPanel = page.locator("#lemon-tickets");
   await expect(ticketPanel).toHaveAttribute("open", "");
   await ticketPanel.getByRole("button", { name: /Win\s*1/ }).click();
+  await expect(
+    ticketPanel.locator(".lemon-ticket-heading").first(),
+  ).toContainText("Daily draw");
+  await expect(ticketPanel.locator(".lemon-ticket-prize").first()).toHaveText(
+    "Prize 4.750000037 SOL",
+  );
   await expect(ticketPanel).toContainText("Waiting for treasury funding");
   await expect(
     ticketPanel.getByRole("button", {
@@ -333,21 +365,43 @@ export function useLemonGame(){
   await ticketPanel.getByRole("button", { name: /Done\s*3/ }).click();
   await expect(ticketPanel).toContainText("Win · Paid");
   await expect(ticketPanel).toContainText("Loss");
-  await ticketPanel.getByRole("button", { name: /Ongoing\s*4/ }).click();
-  const openTicket = ticketPanel
-    .locator(".lemon-ticket")
-    .filter({
-      has: page.getByRole("button", {
-        name: "Review reveal costs",
-        exact: true,
-      }),
-    })
-    .first();
+  await ticketPanel.getByRole("button", { name: /Ongoing\s*5/ }).click();
+  const openTicket = ticketPanel.locator(".lemon-ticket").first();
   await openTicket
     .getByRole("button", { name: "Review reveal costs", exact: true })
     .click();
   const reveal = page.locator(".lemon-reveal-review");
+  await expect(openTicket.locator(".lemon-reveal-review")).toHaveCount(1);
+  await expect(
+    page.locator(".lemon-dashboard > .lemon-reveal-review"),
+  ).toHaveCount(0);
   await expect(reveal).toContainText("0.007000032 SOL");
+  await expect(ticketPanel).toContainText(
+    "Shared draw · One reveal covers these tickets",
+  );
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1100 });
+    await reveal.scrollIntoViewIfNeeded();
+    const ticketBounds = await openTicket.boundingBox();
+    const revealBounds = await reveal.boundingBox();
+    assert.ok(
+      revealBounds.x >= ticketBounds.x &&
+        revealBounds.x + revealBounds.width <=
+          ticketBounds.x + ticketBounds.width + 1,
+      `${width}px reveal review stays inside the relevant ticket`,
+    );
+    assert.ok(
+      (await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      )) <= 1,
+      `${width}px inline reveal must not cause page overflow`,
+    );
+    await page.screenshot({
+      path: `test-results/lemon-reveal-${width}.png`,
+      fullPage: true,
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 1100 });
   assert.ok(
     !(await page.evaluate(() => window.__lemonActions)).includes("reveal"),
   );
@@ -357,9 +411,24 @@ export function useLemonGame(){
   ).toBeDisabled();
   await page.evaluate((value) => window.__setLemonClock(value), now);
   await reveal.getByRole("button", { name: "Approve reveal costs" }).click();
-  assert.ok(
-    (await page.evaluate(() => window.__lemonActions)).includes("reveal"),
+  assert.equal(
+    (await page.evaluate(() => window.__lemonActions)).filter(
+      (action) => action === "reveal",
+    ).length,
+    1,
   );
+  await expect(reveal).toHaveCount(0);
+  await expect(
+    ticketPanel.getByText("Waiting for oracle · Refresh to check", {
+      exact: true,
+    }),
+  ).toHaveCount(3);
+  await expect(
+    openTicket.getByRole("button", {
+      name: "Review reveal costs",
+      exact: true,
+    }),
+  ).toHaveCount(0);
   await ticketPanel
     .getByRole("button", { name: "Complete draw", exact: true })
     .click();
@@ -374,11 +443,29 @@ export function useLemonGame(){
   await expect(resultPanel).toHaveAttribute("open", "");
   await expect(resultPanel.locator("tbody tr")).toHaveCount(3);
   await expect(
+    resultPanel.locator("tbody tr").first().locator("td").first(),
+  ).toHaveText("Daily draw");
+  await expect(
     resultPanel.locator("tbody tr").first().locator(".lemon-triple"),
-  ).toHaveAttribute(
-    "aria-label",
-    "Lemon, digit 0; Lemon, digit 0; Lemon, digit 0",
+  ).toHaveAttribute("aria-label", "Lemon; Lemon; Lemon");
+  await expect(
+    resultPanel.locator(".lemon-fruit small, [aria-label*='digit']"),
+  ).toHaveCount(0);
+  await page
+    .locator(".lemon-page-links")
+    .getByRole("link", { name: "Game guide" })
+    .click();
+  const guide = page.locator("#lemon-guide");
+  await expect(guide).toHaveAttribute("open", "");
+  assert.deepEqual(
+    await guide.locator(".lemon-fruit-map dd").allTextContents(),
+    ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
   );
+  await expect(guide).toContainText(
+    "03:00 / 07:00 / 11:00 / 15:00 / 19:00 / 23:00 UTC+8",
+  );
+  await expect(page.locator(".lemon-fruit-map")).toHaveCount(1);
+  await guide.locator("summary").click();
   for (const link of await resultPanel.locator(".history-link").all()) {
     await expect(link).toHaveAttribute(
       "href",
@@ -430,7 +517,7 @@ export function useLemonGame(){
   );
   assert.deepEqual(errors, []);
   console.log(
-    "Lemon UI: fruit repeats, quote wallet/program/selection/expiry checks, explicit oracle review, funding-wait claims, finalized-only results, explorer links and four responsive widths passed. Fixtures never sign or send blockchain transactions.",
+    "Lemon UI: fruit-only picks/results, guide mapping, preserved historical daily labels/prizes, current schedule, quote checks, inline once-per-draw oracle review, funding-wait claims, finalized-only results, explorer links and four responsive widths passed. Fixtures never sign or send blockchain transactions.",
   );
 } finally {
   await browser.close();

@@ -19,7 +19,10 @@ import {
   lemonNumbersFromRandomness,
   deriveLemonOracleSeed,
 } from "./lemonProtocol.js";
-import { isDailyDrawTime } from "./time.js";
+import {
+  isLemonDailyDrawTime,
+  nextLemonDrawTime,
+} from "../../games/lemon/lemonSchedule.js";
 
 function amount(value) {
   const result = Number(value?.toString());
@@ -59,6 +62,10 @@ export class LemonClient extends VrfDodosClient {
 
   get expectedRulesRevision() {
     return 1;
+  }
+
+  isDailyDrawTime(timestamp) {
+    return isLemonDailyDrawTime(timestamp);
   }
   validNumbers(numbers) {
     return validFruitNumbers(numbers);
@@ -144,9 +151,9 @@ export class LemonClient extends VrfDodosClient {
         rules.outcomeCount === 1000,
     );
     check(
-      Array.from(rules.dailyHours).join(",") === "2,6,10,14,18,22" &&
+      Array.from(rules.dailyHours).join(",") === "3,7,11,15,19,23" &&
         rules.scheduleIntervalSeconds === 14_400 &&
-        rules.scheduleOffsetSeconds === 7200 &&
+        rules.scheduleOffsetSeconds === 10800 &&
         rules.buyAheadSeconds === 86_400,
     );
     for (const key of [
@@ -238,6 +245,10 @@ export class LemonClient extends VrfDodosClient {
 
   async getPurchaseQuote(numbers, { drawTime, config } = {}) {
     this.validateSelection(numbers);
+    if (Number(drawTime) % 14_400 === 7200)
+      throw new Error(
+        "This former Lemon daily slot is closed to new entries. Choose a current daily draw or a fresh Quick draw.",
+      );
     const active = config ?? (await this.getConfig());
     check(
       active?.verified &&
@@ -247,7 +258,7 @@ export class LemonClient extends VrfDodosClient {
     const quote = await this.bankroll.quote(numbers, {
       drawTime,
       config: active,
-      quick: !isDailyDrawTime(Number(drawTime)),
+      quick: !this.isDailyDrawTime(Number(drawTime)),
     });
     return {
       ...quote,
@@ -284,6 +295,7 @@ export class LemonClient extends VrfDodosClient {
     this.validateSelection(numbers);
     return super.submitPurchase(numbers, {
       ...options,
+      drawTime: options.drawTime ?? nextLemonDrawTime(this.now()),
       config: await this.getConfig(),
     });
   }
@@ -311,6 +323,7 @@ export class LemonClient extends VrfDodosClient {
       drawTime: Number(drawTime),
       requiresPayment: draw.status === "open",
       drawStatus: draw.status,
+      draw,
       walletAddress: this.wallet?.publicKey?.toBase58(),
       sourceProgram: LEMON_PROGRAM_ID,
       validUntil: this.now() + 30_000,

@@ -56,7 +56,7 @@ export class BankrollClient {
     const { connection, program } = this.client;
     if (!config?.bankrollRules || config.bankrollRules.ticketVersion !== 4)
       throw new Error("Wait for the verified claim-funded prize rules.");
-    const daily = !quick && isDailyDrawTime(Number(drawTime));
+    const daily = !quick && (this.client.isDailyDrawTime?.(Number(drawTime)) ?? isDailyDrawTime(Number(drawTime)));
     const cost = daily ? config.dailyTicketCostLamports : config.quickTicketCostLamports;
     const prize = daily ? config.dailyPayoutLamports : config.quickPayoutLamports;
     const [ledger, draw, capacity] = await Promise.all([

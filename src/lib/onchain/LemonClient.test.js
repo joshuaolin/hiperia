@@ -57,9 +57,9 @@ function fixture() {
           dailyTicketCostLamports: new BN(6_250_000),
           quickPayoutLamports: new BN(2_500_000_000),
           dailyPayoutLamports: new BN(4_750_000_000),
-          dailyHours: [2, 6, 10, 14, 18, 22],
+          dailyHours: [3, 7, 11, 15, 19, 23],
           scheduleIntervalSeconds: 14_400,
-          scheduleOffsetSeconds: 7200,
+          scheduleOffsetSeconds: 10800,
           buyAheadSeconds: 86_400,
         },
       },
@@ -288,6 +288,30 @@ test("Lemon checkout quotes correct triple account rents and permits zero operat
   );
 });
 
+test("Lemon quotes its own shifted daily offers and rejects retired daily seconds before buying", async () => {
+  const { client } = fixture();
+  const config = await client.getConfig();
+  const daily =
+    Math.floor((NOW / 1000 - 10_800) / 14_400) * 14_400 + 10_800 + 28_800;
+  const quote = await client.getPurchaseQuote([0, 0, 0], {
+    drawTime: daily,
+    config,
+  });
+  assert.equal(quote.quick, false);
+  assert.equal(quote.entryLamports, 6_250_000);
+  assert.equal(quote.prizeLamports, 4_750_000_000);
+  const quick = await client.getPurchaseQuote([0, 0, 0], {
+    drawTime: daily + 60,
+    config,
+  });
+  assert.equal(quick.quick, true);
+  assert.equal(quick.entryLamports, 7_200_000);
+  assert.equal(quick.prizeLamports, 2_500_000_000);
+  await assert.rejects(
+    client.getPurchaseQuote([0, 0, 0], { drawTime: daily - 3_600, config }),
+  );
+});
+
 test("zero-zero-zero is a real published Lemon result only after verified finalization", () => {
   const { client } = fixture();
   const time = NOW / 1000 - 1;
@@ -359,6 +383,113 @@ test("Lemon prevents mainnet writes and price increases beyond an explicitly rev
       }),
     /changed or expired/,
   );
+});
+
+function recordedDraw(client, { status = 0, numbers = [0, 0, 0] } = {}) {
+  const time = NOW / 1000 - 1;
+  const seed = Array(32).fill(7);
+  return {
+    drawTime: new BN(time),
+    bump: getDrawPda(time, client.program.programId)[1],
+    status,
+    ticketCount: new BN(1),
+    seed,
+    oracleRequest: getOracleRequestPda(seed)[0],
+    oracleClient: getOracleClientPda(time, client.program.programId)[0],
+    requestedBy: new PublicKey(UAT_ADMIN),
+    requestedAt: new BN(time),
+    numbers,
+    isDaily: false,
+    ticketCostLamports: new BN(7_200_000),
+    payoutLamports: new BN(2_500_000_000),
+  };
+}
+
+test("Lemon reveal review quotes a fee only for an open draw and distinguishes existing request states", async () => {
+  for (const [status, proofStatus, expectedStatus] of [
+    [0, null, "open"],
+    [1, "pending", "pending"],
+    [1, "fulfilled", "fulfilled"],
+    [2, null, "final"],
+  ]) {
+    const { client, owner } = fixture();
+    const account = recordedDraw(client, { status });
+    let feeReads = 0;
+    client.program.account.draw.fetchNullable = async () => account;
+    client.oracle.readRequest = async () => ({ status: proofStatus });
+    client.getOracleQuote = async () => {
+      feeReads++;
+      return {
+        feeLamports: 100,
+        pendingRentLamports: 200,
+        clientRentLamports: 300,
+        totalLamports: 600,
+      };
+    };
+    const quote = await client.quoteOracleRequest(NOW / 1000 - 1);
+    assert.equal(quote.drawStatus, expectedStatus);
+    assert.equal(quote.requiresPayment, status === 0);
+    assert.equal(quote.totalLamports, status === 0 ? 600 : 0);
+    assert.equal(quote.rentLamports, status === 0 ? 500 : 0);
+    assert.equal(quote.walletAddress, owner.publicKey.toBase58());
+    assert.equal(quote.sourceProgram, LEMON_PROGRAM_ID);
+    assert.equal(feeReads, status === 0 ? 1 : 0);
+  }
+});
+
+test("repeated Lemon completion of the same finalized ticket never signs, pays or creates another result", async () => {
+  const { client } = fixture();
+  const account = recordedDraw(client, { status: 2 });
+  client.program.account.draw.fetchNullable = async () => account;
+  client.program.account.draw.all = async () => [
+    {
+      publicKey: getDrawPda(NOW / 1000 - 1, client.program.programId)[0],
+      account,
+    },
+  ];
+  const unexpected = async () =>
+    assert.fail(
+      "A finalized draw must not request another approval or oracle fee",
+    );
+  client.getOracleQuote = unexpected;
+  client.oracle.readRequest = unexpected;
+  client.wallet.signTransaction = unexpected;
+  client.program.provider.sendAndConfirm = unexpected;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const result = await client.recordDraw(NOW / 1000 - 1, { waitMs: 0 });
+    assert.equal(result.signature, null);
+    assert.equal(result.recovered, true);
+    assert.equal(result.pending, false);
+    assert.equal(result.phase, "final");
+    assert.deepEqual(result.draw.numbers, [0, 0, 0]);
+    const results = await client.getResults();
+    assert.equal(results.length, 1);
+    assert.deepEqual(results[0].numbers, [0, 0, 0]);
+  }
+});
+
+test("a Lemon reveal quote overtaken by another completion recovers the recorded result without signing", async () => {
+  const { client } = fixture();
+  let account = recordedDraw(client);
+  client.program.account.draw.fetchNullable = async () => account;
+  client.getOracleQuote = async () => ({
+    feeLamports: 100,
+    pendingRentLamports: 200,
+    clientRentLamports: 300,
+    totalLamports: 600,
+  });
+  const quote = await client.quoteOracleRequest(NOW / 1000 - 1);
+  assert.equal(quote.requiresPayment, true);
+  account = recordedDraw(client, { status: 2, numbers: [3, 5, 0] });
+  const unexpected = async () =>
+    assert.fail("A completed draw must not be sent again");
+  client.getOracleQuote = unexpected;
+  client.wallet.signTransaction = unexpected;
+  client.program.provider.sendAndConfirm = unexpected;
+  const result = await client.recordDraw(NOW / 1000 - 1, { quote });
+  assert.equal(result.recovered, true);
+  assert.equal(result.signature, null);
+  assert.deepEqual(result.draw.numbers, [3, 5, 0]);
 });
 
 test("proxy permits only exact Lemon readonly metadata without arbitrary unsigned mutations", async () => {
